@@ -18,8 +18,8 @@ app.get('/api/config/public', (req, res) => {
 });
 app.post('/api/checkout', (req, res) => {
   res.json({
-    init_point: 'https://www.mercadopago.com.br'
-  });
+  checkoutUrl: 'https://www.mercadopago.com.br'
+});
 });
 const PORT = process.env.PORT || 3000;
 
