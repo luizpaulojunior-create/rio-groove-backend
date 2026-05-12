@@ -16,7 +16,11 @@ app.get('/api/config/public', (req, res) => {
     checkoutEndpoint: 'https://rio-groove-backend.onrender.com/api/checkout'
   });
 });
-
+app.post('/api/checkout', (req, res) => {
+  res.json({
+    init_point: 'https://www.mercadopago.com.br'
+  });
+});
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
