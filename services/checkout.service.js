@@ -1,6 +1,24 @@
-## Função de Normalização Robusta
 function normalizePrice(value) {
-  if (typeof value === 'number') return value;
+  if (value === null || value === undefined) return 0;
+  
+  // Se já for um número (ex: 289.7), apenas garante que tenha no máximo 2 casas decimais
+  if (typeof value === 'number') {
+    return Math.round(value * 100) / 100;
+  }
+
+  if (typeof value === 'string') {
+    // Remove R$, espaços e pontos de milhar (ex: 1.289,70 -> 1289,70)
+    let cleanValue = value.replace(/[R$\s.]/g, '').trim();
+    
+    // Troca a vírgula decimal por ponto (ex: 1289,70 -> 1289.70)
+    cleanValue = cleanValue.replace(',','.');
+    
+    const parsed = parseFloat(cleanValue);
+    return isNaN(parsed) ? 0 : Math.round(parsed * 100) / 100;
+  }
+
+  return 0;
+}
 
   if (typeof value === 'string') {
     // 1. Remove espaços e caracteres de moeda (R$)
