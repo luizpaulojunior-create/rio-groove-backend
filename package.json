@@ -1,11 +1,11 @@
 {
   "name": "rio-groove-backend",
-  "version": "2.0.0",
-  "description": "Backend da Rio Groove Store com Node.js, Express, Supabase e Mercado Pago Checkout Pro",
+  "version": "2.1.0",
+  "description": "Backend da Rio Groove Store com Checkout Pro real do Mercado Pago, Node.js, Express e Supabase",
   "main": "server.js",
   "scripts": {
-    "dev": "node --watch src/server.js",
-    "start": "node src/server.js"
+    "dev": "node --watch server.js",
+    "start": "node server.js"
   },
   "engines": {
     "node": ">=20"

@@ -62,7 +62,17 @@ Obrigatórias no Render:
 - `SUPABASE_URL=https://cvpobvvkhcqasumhfwps.supabase.co`
 - `SUPABASE_SERVICE_ROLE_KEY=...`
 - `MERCADO_PAGO_PUBLIC_KEY=APP_USR-9bbcd335-9f64-4212-8226-1c039fd7b68d`
-- `MERCADO_PAGO_ACCESS_TOKEN=...`
+- `MERCADO_PAGO_ACCESS_TOKEN=APP_USR-...`
+- `STATEMENT_DESCRIPTOR=RIO GROOVE`
+- `DEFAULT_CURRENCY=BRL`
+
+### Observações importantes sobre o Checkout Pro real
+
+- O endpoint `POST /api/checkout` usa `MERCADO_PAGO_ACCESS_TOKEN` para criar uma preferência real no Mercado Pago.
+- A resposta retorna `checkoutUrl`, com fallback de `init_point` e `sandbox_init_point`.
+- O frontend deve redirecionar o cliente usando `window.location.href = data.checkoutUrl`.
+- `BACKEND_URL` precisa ser a URL pública real do Render para o webhook funcionar corretamente.
+- `FRONTEND_URL` precisa ser a URL pública real do site para os retornos de sucesso, pendente e falha.
 
 ## Banco de dados no Supabase
 
@@ -138,8 +148,9 @@ npm run dev
   "orderNumber": "RG-2026-12345678",
   "externalReference": "RG-2026-12345678-ABC123",
   "preferenceId": "123456789-xxxx",
-  "initPoint": "https://www.mercadopago.com.br/checkout/v1/redirect?...",
-  "sandboxInitPoint": null,
+  "checkoutUrl": "https://www.mercadopago.com.br/checkout/v1/redirect?...",
+  "init_point": "https://www.mercadopago.com.br/checkout/v1/redirect?...",
+  "sandbox_init_point": null,
   "publicKey": "APP_USR-...",
   "totals": {
     "subtotal": 129.9,
@@ -169,7 +180,7 @@ A integração recomendada é:
 
 1. montar o carrinho em um array `items`
 2. enviar os dados do formulário para `POST /api/checkout`
-3. receber `initPoint`
+3. receber `checkoutUrl`
 4. redirecionar o usuário para o Mercado Pago
 
 Exemplo:
@@ -188,7 +199,10 @@ Exemplo:
     const data = await response.json();
     if (!response.ok) throw new Error(data.message || 'Erro no checkout');
 
-    window.location.href = data.initPoint;
+    const redirectUrl = data.checkoutUrl || data.init_point || data.sandbox_init_point;
+    if (!redirectUrl) throw new Error('URL de checkout não retornada pelo backend');
+
+    window.location.href = redirectUrl;
   }
 </script>
 ```

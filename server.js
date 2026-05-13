@@ -1,30 +1,7 @@
-const express = require('express');
-const cors = require('cors');
-const app = express();
-app.use(cors());
-app.use(express.json());
-app.get('/', (req, res) => {
-  res.send('Rio Groove Backend Online 🚀');
-});
+try {
+  require('./src/server');
+} catch (error) {
+  console.error('Erro ao iniciar o backend da Rio Groove Store:', error);
+  process.exit(1);
+}
 
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
-});
-
-app.get('/api/config/public', (req, res) => {
-  res.json({
-    checkoutEndpoint: 'https://rio-groove-backend.onrender.com/api/checkout'
-  });
-});
-app.post('/api/checkout', (req, res) => {
-  res.json({
-    checkoutUrl: 'https://www.mercadopago.com.br',
-    init_point: 'https://www.mercadopago.com.br',
-    url: 'https://www.mercadopago.com.br'
-  });
-});
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-  console.log(`Servidor rodando na porta ${PORT}`);
-});
