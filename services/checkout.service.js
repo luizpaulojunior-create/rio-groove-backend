@@ -72,14 +72,14 @@ async function createCheckout({ payload }) {
       picture_url: item.imageUrl || undefined
     }));
 
-    if (payload.shipping.price > 0) {
-      preferenceItems.push({
-        title: `Frete ${payload.shipping.label ? `- ${payload.shipping.label}` : ''}`.trim(),
-        quantity: 1,
-        unit_price: Number(payload.shipping.price),
-        currency_id: 'BRL'
-      });
-    }
+    // if (payload.shipping.price > 0) {
+//   preferenceItems.push({
+//     title: `Frete ${payload.shipping.label ? `- ${payload.shipping.label}` : ''}`.trim(),
+//     quantity: 1,
+//     unit_price: Number(payload.shipping.price),
+//     currency_id: 'BRL'
+//   });
+// }
 
     const mpResponse = await preferenceClient.create({
       body: {
