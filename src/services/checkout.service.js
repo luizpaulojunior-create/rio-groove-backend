@@ -93,6 +93,12 @@ async function createCheckout({ payload }) {
           failure: `${env.frontendUrl}/?payment=failure&external_reference=${externalReference}`
         },
         auto_return: 'approved',
+        payment_methods: {
+          excluded_payment_methods: [],
+          excluded_payment_types: [],
+          installments: 12,
+          default_installments: 1
+        },
         payer: {
           name: payload.customer.name,
           email: payload.customer.email,
@@ -116,7 +122,14 @@ async function createCheckout({ payload }) {
         },
         metadata: {
           order_number: orderNumber,
-          external_reference: externalReference
+          external_reference: externalReference,
+          enabled_payment_methods: [
+            'pix',
+            'debit_card',
+            'ticket',
+            'credit_card',
+            'mercado_pago_line_of_credit'
+          ]
         }
       }
     });

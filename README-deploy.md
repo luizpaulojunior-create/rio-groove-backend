@@ -73,6 +73,7 @@ Obrigatórias no Render:
 - O frontend deve redirecionar o cliente usando `window.location.href = data.checkoutUrl`.
 - `BACKEND_URL` precisa ser a URL pública real do Render para o webhook funcionar corretamente.
 - `FRONTEND_URL` precisa ser a URL pública real do site para os retornos de sucesso, pendente e falha.
+- A preferência agora envia `payment_methods` sem exclusões automáticas, para manter disponíveis no Checkout Pro: PIX, cartão de débito, boleto, cartão de crédito e linha de crédito Mercado Pago, conforme elegibilidade da conta e da região.
 
 ## Banco de dados no Supabase
 
@@ -159,6 +160,18 @@ npm run dev
   }
 }
 ```
+
+## Métodos de pagamento mantidos no Checkout Pro
+
+A preferência do Mercado Pago foi ajustada para não excluir métodos automaticamente. Assim, o Checkout Pro pode exibir os meios de pagamento elegíveis da conta, incluindo:
+
+- PIX
+- cartão de débito
+- boleto
+- cartão de crédito
+- linha de crédito Mercado Pago
+
+Observação: a disponibilidade final de cada opção depende da conta Mercado Pago, da região e das regras do próprio Mercado Pago no momento do checkout.
 
 ## Integração com o frontend atual da Rio Groove Store
 
