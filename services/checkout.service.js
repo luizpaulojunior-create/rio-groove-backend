@@ -1,14 +1,32 @@
+## Função de Normalização Robusta
 function normalizePrice(value) {
-  if (typeof value === 'number') {
-    return value;
+  if (typeof value === 'number') return value;
+
+  if (typeof value === 'string') {
+    // 1. Remove espaços e caracteres de moeda (R$)
+    let cleanValue = value.replace(/[R$\s]/g, '').trim();
+
+    // 2. Lógica para tratar separadores:
+    // Se tiver ponto e vírgula (ex: 1.250,50), remove o ponto e troca a vírgula por ponto.
+    if (cleanValue.includes('.') && cleanValue.includes(',')) {
+      cleanValue = cleanValue.replace(/\./g, '').replace(',', '.');
+    } 
+    // Se tiver apenas vírgula (ex: 129,90), troca por ponto.
+    else if (cleanValue.includes(',')) {
+      cleanValue = cleanValue.replace(',', '.');
+    }
+
+    const parsed = Number(cleanValue);
+    return isNaN(parsed) ? 0 : parsed;
   }
 
-  return Number(
-    String(value)
-      .replace(',', '.')
-      .trim()
-  );
+  return Number(value) || 0;
 }
+
+---
+
+## Serviço de Checkout Atualizado
+
 const env = require('../config/env');
 const { preferenceClient } = require('../lib/mercadopago');
 const {
@@ -24,9 +42,13 @@ const {
 } = require('../utils/order');
 
 async function createCheckout({ payload }) {
+  // LOG DE DEBUG: Essencial para ver se o erro vem do Frontend
+  console.log('PAYLOAD RECEBIDO DO FRONT:', JSON.stringify(payload, null, 2));
+
   const orderNumber = buildOrderNumber();
   const externalReference = buildExternalReference(orderNumber);
 
+  // Criamos o pedido no banco de dados primeiro
   const order = await createOrder({
     order: {
       order_number: orderNumber,
@@ -34,15 +56,15 @@ async function createCheckout({ payload }) {
       status: 'awaiting_payment',
       payment_status: 'pending',
       payment_provider: 'mercado_pago',
-      currency: env.defaultCurrency,
+      currency: env.defaultCurrency || 'BRL',
       customer_name: payload.customer.name,
       customer_email: payload.customer.email,
       customer_phone: payload.customer.phone,
       customer_cpf: payload.customer.cpf || null,
       accepts_marketing: payload.customer.acceptsMarketing,
-      shipping_method: payload.shipping.label,
-      shipping_amount: payload.shipping.price,
-      shipping_deadline: payload.shipping.deadline || null,
+      shipping_method: payload.shipping?.label || 'Não informado',
+      shipping_amount: normalizePrice(payload.shipping?.price || 0),
+      shipping_deadline: payload.shipping?.deadline || null,
       shipping_cep: payload.address.cep,
       shipping_street: payload.address.street,
       shipping_number: payload.address.number,
@@ -51,51 +73,63 @@ async function createCheckout({ payload }) {
       shipping_city: payload.address.city,
       shipping_state: payload.address.state,
       notes: payload.address.notes || null,
-      items_count: payload.items.reduce((sum, item) => sum + item.quantity, 0),
-      subtotal_amount: payload.subtotal,
-      total_amount: payload.total,
+      items_count: payload.items.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0),
+      subtotal_amount: normalizePrice(payload.subtotal),
+      total_amount: normalizePrice(payload.total),
       raw_checkout_payload: payload.rawPayload
     }
   });
 
   try {
-    await createOrderItems(
-      payload.items.map((item) => ({
-        order_id: order.id,
-        product_name: item.productName,
-        product_slug: item.slug || null,
-        image_url: item.imageUrl || null,
-        color: item.color,
-        size: item.size,
-        quantity: item.quantity,
-  unit_price: normalizePrice(item.unit_price || item.price),
-        line_total: item.lineTotal,
-        metadata_json: item.raw
-      }))
-    );
+    // 1. Preparar itens para o Banco de Dados
+    const itemsForDB = payload.items.map((item) => ({
+      order_id: order.id,
+      product_name: item.productName,
+      product_slug: item.slug || null,
+      image_url: item.imageUrl || null,
+      color: item.color,
+      size: item.size,
+      quantity: Number(item.quantity),
+      unit_price: normalizePrice(item.unit_price || item.price),
+      line_total: normalizePrice(item.lineTotal || (item.price * item.quantity)),
+      metadata_json: item.raw
+    }));
 
-    const preferenceItems = payload.items.map((item) => ({
-      title: item.productName,
-      description: `${item.color} | Tam ${item.size}`,
-      quantity: item.quantity,
-unit_price: normalizePrice(item.unit_price || item.price),
-currency_id: 'BRL',
-picture_url: item.imageUrl || undefined
+    await createOrderItems(itemsForDB);
 
-    // if (payload.shipping.price > 0) {
-//   preferenceItems.push({
-//     title: `Frete ${payload.shipping.label ? `- ${payload.shipping.label}` : ''}`.trim(),
-//     quantity: 1,
-//     unit_price: Number(payload.shipping.price),
-//     currency_id: 'BRL'
-//   });
-// }
-console.log(preferenceItems);
+    // 2. Preparar itens para o Mercado Pago (Checkout Pro)
+    const preferenceItems = payload.items.map((item) => {
+      const price = normalizePrice(item.unit_price || item.price);
+      
+      // LOG DE VERIFICAÇÃO DE PREÇO UNITÁRIO
+      console.log(`Item: ${item.productName} | Preço Original: ${item.unit_price || item.price} | Normalizado: ${price}`);
+
+      return {
+        title: item.productName,
+        description: `${item.color || ''} | Tam ${item.size || ''}`.trim(),
+        quantity: Number(item.quantity),
+        unit_price: price,
+        currency_id: 'BRL',
+        picture_url: item.imageUrl || undefined
+      };
+    });
+
+    // 3. Adicionar Frete como um item no Mercado Pago (Opcional, mas recomendado)
+    const shippingPrice = normalizePrice(payload.shipping?.price);
+    if (shippingPrice > 0) {
+      preferenceItems.push({
+        title: `Frete: ${payload.shipping.label || ''}`.trim(),
+        quantity: 1,
+        unit_price: shippingPrice,
+        currency_id: 'BRL'
+      });
+    }
+
     const mpResponse = await preferenceClient.create({
       body: {
         items: preferenceItems,
         external_reference: externalReference,
-        statement_descriptor: env.statementDescriptor,
+        statement_descriptor: env.statementDescriptor || 'LOJA ONLINE',
         notification_url: `${env.backendUrl}/api/webhooks/mercadopago`,
         back_urls: {
           success: `${env.frontendUrl}/?payment=success&external_reference=${externalReference}`,
@@ -106,17 +140,10 @@ console.log(preferenceItems);
         payer: {
           name: payload.customer.name,
           email: payload.customer.email,
-          phone: {
-            number: onlyDigits(payload.customer.phone)
-          },
-          identification: payload.customer.cpf
-            ? {
-                type: 'CPF',
-                number: payload.customer.cpf
-              }
-            : undefined,
+          phone: { number: onlyDigits(payload.customer.phone) },
+          identification: payload.customer.cpf ? { type: 'CPF', number: onlyDigits(payload.customer.cpf) } : undefined,
           address: {
-            zip_code: payload.address.cep,
+            zip_code: onlyDigits(payload.address.cep),
             street_name: payload.address.street,
             street_number: payload.address.number,
             neighborhood: payload.address.neighborhood,
@@ -135,7 +162,7 @@ console.log(preferenceItems);
     const checkoutUrl = preference?.init_point || preference?.sandbox_init_point || null;
 
     if (!checkoutUrl) {
-      throw new Error('O Mercado Pago não retornou um init_point válido para o Checkout Pro.');
+      throw new Error('O Mercado Pago não retornou um link de pagamento válido.');
     }
 
     await updateOrderById(order.id, {
@@ -150,21 +177,19 @@ console.log(preferenceItems);
       externalReference,
       preferenceId: preference.id,
       checkoutUrl,
-      init_point: preference.init_point || null,
-      sandbox_init_point: preference.sandbox_init_point || null,
       publicKey: env.mercadoPagoPublicKey,
       totals: {
-        subtotal: payload.subtotal,
-        shipping: payload.shipping.price,
-        total: payload.total
+        subtotal: normalizePrice(payload.subtotal),
+        shipping: shippingPrice,
+        total: normalizePrice(payload.total)
       }
     };
+
   } catch (error) {
+    console.error('ERRO NO CHECKOUT:', error);
     await deleteOrder(order.id);
     throw error;
   }
 }
 
-module.exports = {
-  createCheckout
-};
+module.exports = { createCheckout };
