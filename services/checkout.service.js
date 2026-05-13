@@ -17,23 +17,28 @@ const {
   onlyDigits
 } = require('../utils/order');
 
+// =====================================
+// NORMALIZA PREÇOS EM REAIS
+// SEM CONVERSÃO AUTOMÁTICA DE CENTAVOS
+// =====================================
+
 function normalizePrice(value) {
 
   if (value === null || value === undefined) {
     return 0;
   }
 
-  // Se já for número válido
+  // Já é número válido
   if (typeof value === 'number') {
     return Number(value.toFixed(2));
   }
 
-  // Se vier string
+  // String
   let cleanValue = String(value)
     .replace(/[R$\s]/g, '')
     .trim();
 
-  // Ex: 1.289,70
+  // Ex: 1.299,90
   if (
     cleanValue.includes('.') &&
     cleanValue.includes(',')
@@ -44,40 +49,28 @@ function normalizePrice(value) {
       .replace(',', '.');
   }
 
-  // Ex: 289,70
+  // Ex: 299,90
   else if (cleanValue.includes(',')) {
 
     cleanValue = cleanValue
       .replace(',', '.');
   }
 
-  const parsed = Number(cleanValue);
+  const parsed =
+    Number(cleanValue);
 
   if (isNaN(parsed)) {
     return 0;
   }
 
-  return Number(parsed.toFixed(2));
+  return Number(
+    parsed.toFixed(2)
+  );
 }
 
-// Detecta automaticamente centavos
-function normalizeMercadoPagoPrice(value) {
-
-  let price = normalizePrice(value);
-
-  // Se vier em centavos
-  // Ex: 13000 => 130
-  if (price > 1000) {
-
-    price = Number(
-      (price / 100).toFixed(2)
-    );
-  }
-
-  return price;
-}
-
-async function createCheckout({ payload }) {
+async function createCheckout({
+  payload
+}) {
 
   console.log(
     'CREATE CHECKOUT FOI CHAMADO'
@@ -85,7 +78,11 @@ async function createCheckout({ payload }) {
 
   console.log(
     'PAYLOAD RECEBIDO:',
-    JSON.stringify(payload, null, 2)
+    JSON.stringify(
+      payload,
+      null,
+      2
+    )
   );
 
   const orderNumber =
@@ -96,108 +93,112 @@ async function createCheckout({ payload }) {
       orderNumber
     );
 
-  const order = await createOrder({
-    order: {
+  const order =
+    await createOrder({
+      order: {
 
-      order_number:
-        orderNumber,
+        order_number:
+          orderNumber,
 
-      external_reference:
-        externalReference,
+        external_reference:
+          externalReference,
 
-      status:
-        'awaiting_payment',
+        status:
+          'awaiting_payment',
 
-      payment_status:
-        'pending',
+        payment_status:
+          'pending',
 
-      payment_provider:
-        'mercado_pago',
+        payment_provider:
+          'mercado_pago',
 
-      currency:
-        env.defaultCurrency ||
-        'BRL',
+        currency:
+          env.defaultCurrency ||
+          'BRL',
 
-      customer_name:
-        payload.customer.name,
+        customer_name:
+          payload.customer.name,
 
-      customer_email:
-        payload.customer.email,
+        customer_email:
+          payload.customer.email,
 
-      customer_phone:
-        payload.customer.phone,
+        customer_phone:
+          payload.customer.phone,
 
-      customer_cpf:
-        payload.customer.cpf ||
-        null,
+        customer_cpf:
+          payload.customer.cpf ||
+          null,
 
-      accepts_marketing:
-        payload.customer
-          .acceptsMarketing,
+        accepts_marketing:
+          payload.customer
+            .acceptsMarketing,
 
-      shipping_method:
-        payload.shipping?.label ||
-        'Não informado',
+        shipping_method:
+          payload.shipping
+            ?.label ||
+          'Não informado',
 
-      shipping_amount:
-        normalizeMercadoPagoPrice(
-          payload.shipping?.price || 0
-        ),
+        shipping_amount:
+          normalizePrice(
+            payload.shipping
+              ?.price || 0
+          ),
 
-      shipping_deadline:
-        payload.shipping?.deadline ||
-        null,
+        shipping_deadline:
+          payload.shipping
+            ?.deadline || null,
 
-      shipping_cep:
-        payload.address.cep,
+        shipping_cep:
+          payload.address.cep,
 
-      shipping_street:
-        payload.address.street,
+        shipping_street:
+          payload.address.street,
 
-      shipping_number:
-        payload.address.number,
+        shipping_number:
+          payload.address.number,
 
-      shipping_complement:
-        payload.address
-          .complement || null,
+        shipping_complement:
+          payload.address
+            .complement || null,
 
-      shipping_neighborhood:
-        payload.address
-          .neighborhood,
+        shipping_neighborhood:
+          payload.address
+            .neighborhood,
 
-      shipping_city:
-        payload.address.city,
+        shipping_city:
+          payload.address.city,
 
-      shipping_state:
-        payload.address.state,
+        shipping_state:
+          payload.address.state,
 
-      notes:
-        payload.notes || null,
+        notes:
+          payload.notes || null,
 
-      items_count:
-        payload.items.reduce(
-          (sum, item) =>
-            sum +
-            Number(
-              item.quantity || 0
-            ),
-          0
-        ),
+        items_count:
+          payload.items.reduce(
+            (sum, item) =>
+              sum +
+              Number(
+                item.quantity || 0
+              ),
+            0
+          ),
 
-      subtotal_amount:
-        normalizeMercadoPagoPrice(
-          payload.subtotal
-        ),
+        subtotal_amount:
+          normalizePrice(
+            payload.subtotal
+          ),
 
-      total_amount:
-        normalizeMercadoPagoPrice(
-          payload.total
-        ),
+        total_amount:
+          normalizePrice(
+            payload.total
+          ),
 
-      raw_checkout_payload:
-        payload.rawPayload || null
-    }
-  });
+        raw_checkout_payload:
+          payload.rawPayload ||
+          null
+      }
+    });
 
   try {
 
@@ -209,14 +210,11 @@ async function createCheckout({ payload }) {
       payload.items.map(
         (item) => {
 
-          const rawPrice =
-            item.unit_price ??
-            item.unitPrice ??
-            item.price;
-
           const unitPrice =
-            normalizeMercadoPagoPrice(
-              rawPrice
+            normalizePrice(
+              item.unit_price ??
+              item.unitPrice ??
+              item.price
             );
 
           const quantity =
@@ -232,7 +230,9 @@ async function createCheckout({ payload }) {
                 item.name,
 
               original:
-                rawPrice,
+                item.unit_price ??
+                item.unitPrice ??
+                item.price,
 
               normalized:
                 unitPrice,
@@ -305,14 +305,11 @@ async function createCheckout({ payload }) {
       payload.items.map(
         (item) => {
 
-          const rawPrice =
-            item.unit_price ??
-            item.unitPrice ??
-            item.price;
-
           const unitPrice =
-            normalizeMercadoPagoPrice(
-              rawPrice
+            normalizePrice(
+              item.unit_price ??
+              item.unitPrice ??
+              item.price
             );
 
           const quantity =
@@ -328,7 +325,9 @@ async function createCheckout({ payload }) {
                 item.name,
 
               original:
-                rawPrice,
+                item.unit_price ??
+                item.unitPrice ??
+                item.price,
 
               normalized:
                 unitPrice,
@@ -370,8 +369,9 @@ async function createCheckout({ payload }) {
     // =========================
 
     const shippingPrice =
-      normalizeMercadoPagoPrice(
-        payload.shipping?.price || 0
+      normalizePrice(
+        payload.shipping
+          ?.price || 0
       );
 
     if (shippingPrice > 0) {
@@ -533,7 +533,8 @@ async function createCheckout({ payload }) {
 
     const checkoutUrl =
       preference?.init_point ||
-      preference?.sandbox_init_point ||
+      preference
+        ?.sandbox_init_point ||
       null;
 
     if (!checkoutUrl) {
@@ -551,8 +552,8 @@ async function createCheckout({ payload }) {
           preference.id,
 
         payment_init_point:
-          preference.init_point ||
-          null,
+          preference
+            .init_point || null,
 
         payment_sandbox_init_point:
           preference
@@ -576,8 +577,8 @@ async function createCheckout({ payload }) {
       checkoutUrl,
 
       init_point:
-        preference.init_point ||
-        null,
+        preference
+          .init_point || null,
 
       sandbox_init_point:
         preference
@@ -591,7 +592,7 @@ async function createCheckout({ payload }) {
       totals: {
 
         subtotal:
-          normalizeMercadoPagoPrice(
+          normalizePrice(
             payload.subtotal
           ),
 
@@ -599,7 +600,7 @@ async function createCheckout({ payload }) {
           shippingPrice,
 
         total:
-          normalizeMercadoPagoPrice(
+          normalizePrice(
             payload.total
           )
       }
