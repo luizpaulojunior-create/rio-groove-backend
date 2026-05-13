@@ -47,102 +47,184 @@ function normalizePrice(value) {
   return Number(parsed.toFixed(2));
 }
 
+// Detecta automaticamente centavos
+function normalizeMercadoPagoPrice(value) {
+  let price = normalizePrice(value);
+
+  // Se vier em centavos
+  // Ex: 13000 => 130
+  if (price > 1000) {
+    price = Number((price / 100).toFixed(2));
+  }
+
+  return price;
+}
+
 async function createCheckout({ payload }) {
+
   console.log(
     'PAYLOAD RECEBIDO:',
     JSON.stringify(payload, null, 2)
   );
 
   const orderNumber = buildOrderNumber();
-  const externalReference = buildExternalReference(orderNumber);
+
+  const externalReference =
+    buildExternalReference(orderNumber);
 
   const order = await createOrder({
     order: {
       order_number: orderNumber,
+
       external_reference: externalReference,
+
       status: 'awaiting_payment',
+
       payment_status: 'pending',
+
       payment_provider: 'mercado_pago',
+
       currency: env.defaultCurrency || 'BRL',
 
       customer_name: payload.customer.name,
+
       customer_email: payload.customer.email,
+
       customer_phone: payload.customer.phone,
-      customer_cpf: payload.customer.cpf || null,
 
-      accepts_marketing: payload.customer.acceptsMarketing,
+      customer_cpf:
+        payload.customer.cpf || null,
 
-      shipping_method: payload.shipping?.label || 'Não informado',
-      shipping_amount: normalizePrice(payload.shipping?.price || 0),
-      shipping_deadline: payload.shipping?.deadline || null,
+      accepts_marketing:
+        payload.customer.acceptsMarketing,
+
+      shipping_method:
+        payload.shipping?.label ||
+        'Não informado',
+
+      shipping_amount:
+        normalizeMercadoPagoPrice(
+          payload.shipping?.price || 0
+        ),
+
+      shipping_deadline:
+        payload.shipping?.deadline || null,
 
       shipping_cep: payload.address.cep,
-      shipping_street: payload.address.street,
-      shipping_number: payload.address.number,
-      shipping_complement: payload.address.complement || null,
-      shipping_neighborhood: payload.address.neighborhood,
-      shipping_city: payload.address.city,
-      shipping_state: payload.address.state,
 
-      notes: payload.notes || null,
+      shipping_street:
+        payload.address.street,
+
+      shipping_number:
+        payload.address.number,
+
+      shipping_complement:
+        payload.address.complement || null,
+
+      shipping_neighborhood:
+        payload.address.neighborhood,
+
+      shipping_city:
+        payload.address.city,
+
+      shipping_state:
+        payload.address.state,
+
+      notes:
+        payload.notes || null,
 
       items_count: payload.items.reduce(
-        (sum, item) => sum + Number(item.quantity || 0),
+        (sum, item) =>
+          sum + Number(item.quantity || 0),
         0
       ),
 
-      subtotal_amount: normalizePrice(payload.subtotal),
-      total_amount: normalizePrice(payload.total),
+      subtotal_amount:
+        normalizeMercadoPagoPrice(
+          payload.subtotal
+        ),
 
-      raw_checkout_payload: payload.rawPayload || null
+      total_amount:
+        normalizeMercadoPagoPrice(
+          payload.total
+        ),
+
+      raw_checkout_payload:
+        payload.rawPayload || null
     }
   });
 
   try {
 
     // =========================
-    // ITENS DO BANCO
+    // ITENS BANCO
     // =========================
 
-    const itemsForDB = payload.items.map((item) => {
+    const itemsForDB = payload.items.map(
+      (item) => {
 
-      const unitPrice = normalizePrice(
-        item.unit_price ??
-        item.unitPrice ??
-        item.price
-      );
+        const rawPrice =
+          item.unit_price ??
+          item.unitPrice ??
+          item.price;
 
-      const quantity = Number(item.quantity || 1);
+        const unitPrice =
+          normalizeMercadoPagoPrice(
+            rawPrice
+          );
 
-      return {
-        order_id: order.id,
+        const quantity =
+          Number(item.quantity || 1);
 
-        product_name:
-          item.productName ||
-          item.name ||
-          'Produto',
+        console.log('ITEM DB:', {
+          product:
+            item.productName ||
+            item.name,
 
-        product_slug: item.slug || null,
+          original: rawPrice,
 
-        image_url:
-          item.imageUrl ||
-          item.image ||
-          null,
+          normalized: unitPrice,
 
-        color: item.color || null,
-        size: item.size || null,
+          quantity
+        });
 
-        quantity,
+        return {
+          order_id: order.id,
 
-        unit_price: unitPrice,
+          product_name:
+            item.productName ||
+            item.name ||
+            'Produto',
 
-        line_total: Number(
-          (unitPrice * quantity).toFixed(2)
-        ),
+          product_slug:
+            item.slug || null,
 
-        metadata_json: item.raw || null
-      };
-    });
+          image_url:
+            item.imageUrl ||
+            item.image ||
+            null,
+
+          color:
+            item.color || null,
+
+          size:
+            item.size || null,
+
+          quantity,
+
+          unit_price: unitPrice,
+
+          line_total: Number(
+            (
+              unitPrice * quantity
+            ).toFixed(2)
+          ),
+
+          metadata_json:
+            item.raw || null
+        };
+      }
+    );
 
     console.log(
       'ITENS BANCO:',
@@ -155,133 +237,184 @@ async function createCheckout({ payload }) {
     // ITENS MERCADO PAGO
     // =========================
 
-    const preferenceItems = payload.items.map((item) => {
+    const preferenceItems =
+      payload.items.map((item) => {
 
-      const unitPrice = normalizePrice(
-        item.unit_price ??
-        item.unitPrice ??
-        item.price
-      );
+        const rawPrice =
+          item.unit_price ??
+          item.unitPrice ??
+          item.price;
 
-      const quantity = Number(item.quantity || 1);
+        const unitPrice =
+          normalizeMercadoPagoPrice(
+            rawPrice
+          );
 
-      console.log('ITEM MP:', {
-        product: item.productName || item.name,
-        original: item.unit_price ?? item.unitPrice ?? item.price,
-        normalized: unitPrice,
-        quantity
+        const quantity =
+          Number(item.quantity || 1);
+
+        console.log('ITEM MP:', {
+          product:
+            item.productName ||
+            item.name,
+
+          original: rawPrice,
+
+          normalized: unitPrice,
+
+          quantity
+        });
+
+        return {
+          title:
+            item.productName ||
+            item.name ||
+            'Produto',
+
+          description:
+            `${item.color || ''} | Tam ${
+              item.size || ''
+            }`.trim(),
+
+          quantity,
+
+          unit_price: unitPrice,
+
+          currency_id: 'BRL',
+
+          picture_url:
+            item.imageUrl ||
+            item.image ||
+            undefined
+        };
       });
-
-      return {
-        title:
-          item.productName ||
-          item.name ||
-          'Produto',
-
-        description:
-          `${item.color || ''} | Tam ${item.size || ''}`.trim(),
-
-        quantity,
-
-        unit_price: unitPrice,
-
-        currency_id: 'BRL',
-
-        picture_url:
-          item.imageUrl ||
-          item.image ||
-          undefined
-      };
-    });
 
     // =========================
     // FRETE
     // =========================
 
-    const shippingPrice = normalizePrice(
-      payload.shipping?.price || 0
-    );
+    const shippingPrice =
+      normalizeMercadoPagoPrice(
+        payload.shipping?.price || 0
+      );
 
     if (shippingPrice > 0) {
+
       preferenceItems.push({
-        title: `Frete: ${payload.shipping?.label || ''}`.trim(),
+        title:
+          `Frete: ${
+            payload.shipping?.label || ''
+          }`.trim(),
+
         quantity: 1,
+
         unit_price: shippingPrice,
+
         currency_id: 'BRL'
       });
     }
 
     console.log(
       'PREFERENCE ITEMS:',
-      JSON.stringify(preferenceItems, null, 2)
+      JSON.stringify(
+        preferenceItems,
+        null,
+        2
+      )
     );
 
     // =========================
     // MERCADO PAGO
     // =========================
 
-    const mpResponse = await preferenceClient.create({
-      body: {
-        items: preferenceItems,
+    const mpResponse =
+      await preferenceClient.create({
+        body: {
 
-        external_reference: externalReference,
+          items: preferenceItems,
 
-        statement_descriptor:
-          env.statementDescriptor || 'RIO GROOVE',
+          external_reference:
+            externalReference,
 
-        notification_url:
-          `${env.backendUrl}/api/webhooks/mercadopago`,
+          statement_descriptor:
+            env.statementDescriptor ||
+            'RIO GROOVE',
 
-        back_urls: {
-          success:
-            `${env.frontendUrl}/?payment=success&external_reference=${externalReference}`,
+          notification_url:
+            `${env.backendUrl}/api/webhooks/mercadopago`,
 
-          pending:
-            `${env.frontendUrl}/?payment=pending&external_reference=${externalReference}`,
+          back_urls: {
 
-          failure:
-            `${env.frontendUrl}/?payment=failure&external_reference=${externalReference}`
-        },
+            success:
+              `${env.frontendUrl}/?payment=success&external_reference=${externalReference}`,
 
-        auto_return: 'approved',
+            pending:
+              `${env.frontendUrl}/?payment=pending&external_reference=${externalReference}`,
 
-        payer: {
-          name: payload.customer.name,
-
-          email: payload.customer.email,
-
-          phone: {
-            number: onlyDigits(payload.customer.phone)
+            failure:
+              `${env.frontendUrl}/?payment=failure&external_reference=${externalReference}`
           },
 
-          identification: payload.customer.cpf
-            ? {
-                type: 'CPF',
-                number: onlyDigits(payload.customer.cpf)
-              }
-            : undefined,
+          auto_return: 'approved',
 
-          address: {
-            zip_code: onlyDigits(payload.address.cep),
+          payer: {
 
-            street_name: payload.address.street,
+            name:
+              payload.customer.name,
 
-            street_number: payload.address.number,
+            email:
+              payload.customer.email,
 
-            neighborhood: payload.address.neighborhood,
+            phone: {
+              number: onlyDigits(
+                payload.customer.phone
+              )
+            },
 
-            city: payload.address.city,
+            identification:
+              payload.customer.cpf
+                ? {
+                    type: 'CPF',
 
-            federal_unit: payload.address.state
+                    number: onlyDigits(
+                      payload.customer.cpf
+                    )
+                  }
+                : undefined,
+
+            address: {
+
+              zip_code: onlyDigits(
+                payload.address.cep
+              ),
+
+              street_name:
+                payload.address.street,
+
+              street_number:
+                payload.address.number,
+
+              neighborhood:
+                payload.address.neighborhood,
+
+              city:
+                payload.address.city,
+
+              federal_unit:
+                payload.address.state
+            }
+          },
+
+          metadata: {
+
+            order_number:
+              orderNumber,
+
+            external_reference:
+              externalReference
           }
-        },
-
-        metadata: {
-          order_number: orderNumber,
-          external_reference: externalReference
         }
-      }
-    });
+      });
 
     const preference =
       mpResponse?.body || mpResponse;
@@ -292,45 +425,62 @@ async function createCheckout({ payload }) {
       null;
 
     if (!checkoutUrl) {
+
       throw new Error(
         'Mercado Pago não retornou checkout URL.'
       );
     }
 
     await updateOrderById(order.id, {
-      mercado_pago_preference_id: preference.id,
+
+      mercado_pago_preference_id:
+        preference.id,
 
       payment_init_point:
         preference.init_point || null,
 
       payment_sandbox_init_point:
-        preference.sandbox_init_point || null
+        preference.sandbox_init_point ||
+        null
     });
 
     return {
+
       orderId: order.id,
 
       orderNumber,
 
       externalReference,
 
-      preferenceId: preference.id,
+      preferenceId:
+        preference.id,
 
       checkoutUrl,
 
-      init_point: preference.init_point || null,
+      init_point:
+        preference.init_point || null,
 
       sandbox_init_point:
-        preference.sandbox_init_point || null,
+        preference.sandbox_init_point ||
+        null,
 
-      publicKey: env.mercadoPagoPublicKey,
+      publicKey:
+        env.mercadoPagoPublicKey,
 
       totals: {
-        subtotal: normalizePrice(payload.subtotal),
 
-        shipping: shippingPrice,
+        subtotal:
+          normalizeMercadoPagoPrice(
+            payload.subtotal
+          ),
 
-        total: normalizePrice(payload.total)
+        shipping:
+          shippingPrice,
+
+        total:
+          normalizeMercadoPagoPrice(
+            payload.total
+          )
       }
     };
 
