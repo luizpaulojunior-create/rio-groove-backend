@@ -72,9 +72,10 @@ async function createCheckout({ payload }) {
       description: `${item.color} | Tam ${item.size}`,
       quantity: item.quantity,
      unit_price: parseFloat(
+  unit_price: parseFloat(
   String(item.unit_price || item.price)
     .replace(',', '.')
-),
+) / 10,
       currency_id: 'BRL',
 picture_url: item.imageUrl || undefined
   }));
