@@ -57,8 +57,7 @@ async function createCheckout({ payload }) {
         color: item.color,
         size: item.size,
         quantity: item.quantity,
-        unit_price: parseFloat(
-  unit_price: parseFloat(
+   unit_price: parseFloat(
   String(item.unit_price || item.price)
     .replace(',', '.')
 ),
@@ -71,14 +70,12 @@ async function createCheckout({ payload }) {
       title: item.productName,
       description: `${item.color} | Tam ${item.size}`,
       quantity: item.quantity,
-     unit_price: parseFloat(
-  unit_price: parseFloat(
+unit_price: parseFloat(
   String(item.unit_price || item.price)
     .replace(',', '.')
 ) / 10,
-      currency_id: 'BRL',
+currency_id: 'BRL',
 picture_url: item.imageUrl || undefined
-  }));
 
     // if (payload.shipping.price > 0) {
 //   preferenceItems.push({
