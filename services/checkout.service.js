@@ -108,7 +108,8 @@ async function createCheckout({ payload }) {
       color: item.color,
       size: item.size,
       quantity: Number(item.quantity),
-      unit_price: normalizePrice(item.unit_price || item.price),
+      // Apenas se você confirmou que o valor chega multiplicado por 100 do front
+unit_price: normalizePrice(item.unit_price || item.price) / 10,
       line_total: normalizePrice(item.lineTotal || (item.price * item.quantity)),
       metadata_json: item.raw
     }));
