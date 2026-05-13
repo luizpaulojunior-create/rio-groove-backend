@@ -1,4 +1,7 @@
 const env = require('../config/env');
+
+console.log('BACKEND NOVO RODANDO');
+
 const { preferenceClient } = require('../lib/mercadopago');
 
 const {
@@ -15,6 +18,7 @@ const {
 } = require('../utils/order');
 
 function normalizePrice(value) {
+
   if (value === null || value === undefined) {
     return 0;
   }
@@ -30,12 +34,21 @@ function normalizePrice(value) {
     .trim();
 
   // Ex: 1.289,70
-  if (cleanValue.includes('.') && cleanValue.includes(',')) {
-    cleanValue = cleanValue.replace(/\./g, '').replace(',', '.');
+  if (
+    cleanValue.includes('.') &&
+    cleanValue.includes(',')
+  ) {
+
+    cleanValue = cleanValue
+      .replace(/\./g, '')
+      .replace(',', '.');
   }
+
   // Ex: 289,70
   else if (cleanValue.includes(',')) {
-    cleanValue = cleanValue.replace(',', '.');
+
+    cleanValue = cleanValue
+      .replace(',', '.');
   }
 
   const parsed = Number(cleanValue);
@@ -49,12 +62,16 @@ function normalizePrice(value) {
 
 // Detecta automaticamente centavos
 function normalizeMercadoPagoPrice(value) {
+
   let price = normalizePrice(value);
 
   // Se vier em centavos
   // Ex: 13000 => 130
   if (price > 1000) {
-    price = Number((price / 100).toFixed(2));
+
+    price = Number(
+      (price / 100).toFixed(2)
+    );
   }
 
   return price;
@@ -63,40 +80,60 @@ function normalizeMercadoPagoPrice(value) {
 async function createCheckout({ payload }) {
 
   console.log(
+    'CREATE CHECKOUT FOI CHAMADO'
+  );
+
+  console.log(
     'PAYLOAD RECEBIDO:',
     JSON.stringify(payload, null, 2)
   );
 
-  const orderNumber = buildOrderNumber();
+  const orderNumber =
+    buildOrderNumber();
 
   const externalReference =
-    buildExternalReference(orderNumber);
+    buildExternalReference(
+      orderNumber
+    );
 
   const order = await createOrder({
     order: {
-      order_number: orderNumber,
 
-      external_reference: externalReference,
+      order_number:
+        orderNumber,
 
-      status: 'awaiting_payment',
+      external_reference:
+        externalReference,
 
-      payment_status: 'pending',
+      status:
+        'awaiting_payment',
 
-      payment_provider: 'mercado_pago',
+      payment_status:
+        'pending',
 
-      currency: env.defaultCurrency || 'BRL',
+      payment_provider:
+        'mercado_pago',
 
-      customer_name: payload.customer.name,
+      currency:
+        env.defaultCurrency ||
+        'BRL',
 
-      customer_email: payload.customer.email,
+      customer_name:
+        payload.customer.name,
 
-      customer_phone: payload.customer.phone,
+      customer_email:
+        payload.customer.email,
+
+      customer_phone:
+        payload.customer.phone,
 
       customer_cpf:
-        payload.customer.cpf || null,
+        payload.customer.cpf ||
+        null,
 
       accepts_marketing:
-        payload.customer.acceptsMarketing,
+        payload.customer
+          .acceptsMarketing,
 
       shipping_method:
         payload.shipping?.label ||
@@ -108,9 +145,11 @@ async function createCheckout({ payload }) {
         ),
 
       shipping_deadline:
-        payload.shipping?.deadline || null,
+        payload.shipping?.deadline ||
+        null,
 
-      shipping_cep: payload.address.cep,
+      shipping_cep:
+        payload.address.cep,
 
       shipping_street:
         payload.address.street,
@@ -119,10 +158,12 @@ async function createCheckout({ payload }) {
         payload.address.number,
 
       shipping_complement:
-        payload.address.complement || null,
+        payload.address
+          .complement || null,
 
       shipping_neighborhood:
-        payload.address.neighborhood,
+        payload.address
+          .neighborhood,
 
       shipping_city:
         payload.address.city,
@@ -133,11 +174,15 @@ async function createCheckout({ payload }) {
       notes:
         payload.notes || null,
 
-      items_count: payload.items.reduce(
-        (sum, item) =>
-          sum + Number(item.quantity || 0),
-        0
-      ),
+      items_count:
+        payload.items.reduce(
+          (sum, item) =>
+            sum +
+            Number(
+              item.quantity || 0
+            ),
+          0
+        ),
 
       subtotal_amount:
         normalizeMercadoPagoPrice(
@@ -160,134 +205,165 @@ async function createCheckout({ payload }) {
     // ITENS BANCO
     // =========================
 
-    const itemsForDB = payload.items.map(
-      (item) => {
+    const itemsForDB =
+      payload.items.map(
+        (item) => {
 
-        const rawPrice =
-          item.unit_price ??
-          item.unitPrice ??
-          item.price;
+          const rawPrice =
+            item.unit_price ??
+            item.unitPrice ??
+            item.price;
 
-        const unitPrice =
-          normalizeMercadoPagoPrice(
-            rawPrice
+          const unitPrice =
+            normalizeMercadoPagoPrice(
+              rawPrice
+            );
+
+          const quantity =
+            Number(
+              item.quantity || 1
+            );
+
+          console.log(
+            'ITEM DB:',
+            {
+              product:
+                item.productName ||
+                item.name,
+
+              original:
+                rawPrice,
+
+              normalized:
+                unitPrice,
+
+              quantity
+            }
           );
 
-        const quantity =
-          Number(item.quantity || 1);
+          return {
 
-        console.log('ITEM DB:', {
-          product:
-            item.productName ||
-            item.name,
+            order_id:
+              order.id,
 
-          original: rawPrice,
+            product_name:
+              item.productName ||
+              item.name ||
+              'Produto',
 
-          normalized: unitPrice,
+            product_slug:
+              item.slug || null,
 
-          quantity
-        });
+            image_url:
+              item.imageUrl ||
+              item.image ||
+              null,
 
-        return {
-          order_id: order.id,
+            color:
+              item.color || null,
 
-          product_name:
-            item.productName ||
-            item.name ||
-            'Produto',
+            size:
+              item.size || null,
 
-          product_slug:
-            item.slug || null,
+            quantity,
 
-          image_url:
-            item.imageUrl ||
-            item.image ||
-            null,
+            unit_price:
+              unitPrice,
 
-          color:
-            item.color || null,
+            line_total:
+              Number(
+                (
+                  unitPrice *
+                  quantity
+                ).toFixed(2)
+              ),
 
-          size:
-            item.size || null,
-
-          quantity,
-
-          unit_price: unitPrice,
-
-          line_total: Number(
-            (
-              unitPrice * quantity
-            ).toFixed(2)
-          ),
-
-          metadata_json:
-            item.raw || null
-        };
-      }
-    );
+            metadata_json:
+              item.raw || null
+          };
+        }
+      );
 
     console.log(
       'ITENS BANCO:',
-      JSON.stringify(itemsForDB, null, 2)
+      JSON.stringify(
+        itemsForDB,
+        null,
+        2
+      )
     );
 
-    await createOrderItems(itemsForDB);
+    await createOrderItems(
+      itemsForDB
+    );
 
     // =========================
     // ITENS MERCADO PAGO
     // =========================
 
     const preferenceItems =
-      payload.items.map((item) => {
+      payload.items.map(
+        (item) => {
 
-        const rawPrice =
-          item.unit_price ??
-          item.unitPrice ??
-          item.price;
+          const rawPrice =
+            item.unit_price ??
+            item.unitPrice ??
+            item.price;
 
-        const unitPrice =
-          normalizeMercadoPagoPrice(
-            rawPrice
+          const unitPrice =
+            normalizeMercadoPagoPrice(
+              rawPrice
+            );
+
+          const quantity =
+            Number(
+              item.quantity || 1
+            );
+
+          console.log(
+            'ITEM MP:',
+            {
+              product:
+                item.productName ||
+                item.name,
+
+              original:
+                rawPrice,
+
+              normalized:
+                unitPrice,
+
+              quantity
+            }
           );
 
-        const quantity =
-          Number(item.quantity || 1);
+          return {
 
-        console.log('ITEM MP:', {
-          product:
-            item.productName ||
-            item.name,
+            title:
+              item.productName ||
+              item.name ||
+              'Produto',
 
-          original: rawPrice,
+            description:
+              `${item.color || ''} | Tam ${
+                item.size || ''
+              }`.trim(),
 
-          normalized: unitPrice,
+            quantity,
 
-          quantity
-        });
+            unit_price:
+              unitPrice,
 
-        return {
-          title:
-            item.productName ||
-            item.name ||
-            'Produto',
+            currency_id:
+              'BRL',
 
-          description:
-            `${item.color || ''} | Tam ${
-              item.size || ''
-            }`.trim(),
-
-          quantity,
-
-          unit_price: unitPrice,
-
-          currency_id: 'BRL',
-
-          picture_url:
-            item.imageUrl ||
-            item.image ||
-            undefined
-        };
-      });
+            picture_url:
+              item.imageUrl ||
+              item.image ||
+              undefined
+          };
+        }
+      );
 
     // =========================
     // FRETE
@@ -301,16 +377,20 @@ async function createCheckout({ payload }) {
     if (shippingPrice > 0) {
 
       preferenceItems.push({
+
         title:
           `Frete: ${
-            payload.shipping?.label || ''
+            payload.shipping
+              ?.label || ''
           }`.trim(),
 
         quantity: 1,
 
-        unit_price: shippingPrice,
+        unit_price:
+          shippingPrice,
 
-        currency_id: 'BRL'
+        currency_id:
+          'BRL'
       });
     }
 
@@ -318,6 +398,18 @@ async function createCheckout({ payload }) {
       'PREFERENCE ITEMS:',
       JSON.stringify(
         preferenceItems,
+        null,
+        2
+      )
+    );
+
+    console.log(
+      'BODY MP:',
+      JSON.stringify(
+        {
+          items:
+            preferenceItems
+        },
         null,
         2
       )
@@ -331,13 +423,15 @@ async function createCheckout({ payload }) {
       await preferenceClient.create({
         body: {
 
-          items: preferenceItems,
+          items:
+            preferenceItems,
 
           external_reference:
             externalReference,
 
           statement_descriptor:
-            env.statementDescriptor ||
+            env
+              .statementDescriptor ||
             'RIO GROOVE',
 
           notification_url:
@@ -355,53 +449,70 @@ async function createCheckout({ payload }) {
               `${env.frontendUrl}/?payment=failure&external_reference=${externalReference}`
           },
 
-          auto_return: 'approved',
+          auto_return:
+            'approved',
 
           payer: {
 
             name:
-              payload.customer.name,
+              payload.customer
+                .name,
 
             email:
-              payload.customer.email,
+              payload.customer
+                .email,
 
             phone: {
-              number: onlyDigits(
-                payload.customer.phone
-              )
+              number:
+                onlyDigits(
+                  payload.customer
+                    .phone
+                )
             },
 
             identification:
               payload.customer.cpf
                 ? {
-                    type: 'CPF',
+                    type:
+                      'CPF',
 
-                    number: onlyDigits(
-                      payload.customer.cpf
-                    )
+                    number:
+                      onlyDigits(
+                        payload
+                          .customer
+                          .cpf
+                      )
                   }
                 : undefined,
 
             address: {
 
-              zip_code: onlyDigits(
-                payload.address.cep
-              ),
+              zip_code:
+                onlyDigits(
+                  payload
+                    .address
+                    .cep
+                ),
 
               street_name:
-                payload.address.street,
+                payload.address
+                  .street,
 
               street_number:
-                payload.address.number,
+                payload.address
+                  .number,
 
               neighborhood:
-                payload.address.neighborhood,
+                payload.address
+                  .neighborhood,
 
               city:
-                payload.address.city,
+                payload.address
+                  .city,
 
               federal_unit:
-                payload.address.state
+                payload.address
+                  .state
             }
           },
 
@@ -417,7 +528,8 @@ async function createCheckout({ payload }) {
       });
 
     const preference =
-      mpResponse?.body || mpResponse;
+      mpResponse?.body ||
+      mpResponse;
 
     const checkoutUrl =
       preference?.init_point ||
@@ -431,22 +543,28 @@ async function createCheckout({ payload }) {
       );
     }
 
-    await updateOrderById(order.id, {
+    await updateOrderById(
+      order.id,
+      {
 
-      mercado_pago_preference_id:
-        preference.id,
+        mercado_pago_preference_id:
+          preference.id,
 
-      payment_init_point:
-        preference.init_point || null,
+        payment_init_point:
+          preference.init_point ||
+          null,
 
-      payment_sandbox_init_point:
-        preference.sandbox_init_point ||
-        null
-    });
+        payment_sandbox_init_point:
+          preference
+            .sandbox_init_point ||
+          null
+      }
+    );
 
     return {
 
-      orderId: order.id,
+      orderId:
+        order.id,
 
       orderNumber,
 
@@ -458,14 +576,17 @@ async function createCheckout({ payload }) {
       checkoutUrl,
 
       init_point:
-        preference.init_point || null,
+        preference.init_point ||
+        null,
 
       sandbox_init_point:
-        preference.sandbox_init_point ||
+        preference
+          .sandbox_init_point ||
         null,
 
       publicKey:
-        env.mercadoPagoPublicKey,
+        env
+          .mercadoPagoPublicKey,
 
       totals: {
 
@@ -491,7 +612,9 @@ async function createCheckout({ payload }) {
       error
     );
 
-    await deleteOrder(order.id);
+    await deleteOrder(
+      order.id
+    );
 
     throw error;
   }
