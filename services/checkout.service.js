@@ -58,8 +58,8 @@ async function createCheckout({ payload }) {
         size: item.size,
         quantity: item.quantity,
         unit_price: parseFloat(
+  unit_price: parseFloat(
   String(item.unit_price || item.price)
-    .replace('.', '')
     .replace(',', '.')
 ),
         line_total: item.lineTotal,
@@ -71,11 +71,10 @@ async function createCheckout({ payload }) {
       title: item.productName,
       description: `${item.color} | Tam ${item.size}`,
       quantity: item.quantity,
-     unit_price: typeof (item.unit_price || item.price) === 'string'
-  ? parseFloat(
-      (item.unit_price || item.price).replace(',', '.')
-    )
-  : Number(item.unit_price || item.price),
+     unit_price: parseFloat(
+  String(item.unit_price || item.price)
+    .replace(',', '.')
+),
       currency_id: 'BRL',
 picture_url: item.imageUrl || undefined
   }));
