@@ -1,3 +1,14 @@
+function normalizePrice(value) {
+  if (typeof value === 'number') {
+    return value;
+  }
+
+  return Number(
+    String(value)
+      .replace(',', '.')
+      .trim()
+  );
+}
 const env = require('../config/env');
 const { preferenceClient } = require('../lib/mercadopago');
 const {
@@ -57,10 +68,7 @@ async function createCheckout({ payload }) {
         color: item.color,
         size: item.size,
         quantity: item.quantity,
-   unit_price: parseFloat(
-  String(item.unit_price || item.price)
-    .replace(',', '.')
-),
+  unit_price: normalizePrice(item.unit_price || item.price),
         line_total: item.lineTotal,
         metadata_json: item.raw
       }))
@@ -70,10 +78,7 @@ async function createCheckout({ payload }) {
       title: item.productName,
       description: `${item.color} | Tam ${item.size}`,
       quantity: item.quantity,
-unit_price: parseFloat(
-  String(item.unit_price || item.price)
-    .replace(',', '.')
-) / 10,
+unit_price: normalizePrice(item.unit_price || item.price),
 currency_id: 'BRL',
 picture_url: item.imageUrl || undefined
 
@@ -85,7 +90,7 @@ picture_url: item.imageUrl || undefined
 //     currency_id: 'BRL'
 //   });
 // }
-
+console.log(preferenceItems);
     const mpResponse = await preferenceClient.create({
       body: {
         items: preferenceItems,
