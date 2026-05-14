@@ -1,3 +1,4 @@
+const { randomUUID } = require('crypto');
 const env = require('../config/env');
 const { preferenceClient } = require('../lib/mercadopago');
 const {
@@ -8,16 +9,20 @@ const {
 } = require('./orders.service');
 const {
   buildOrderNumber,
-  buildExternalReference,
   onlyDigits
 } = require('../utils/order');
 
 async function createCheckout({ payload }) {
+  const orderId = randomUUID();
   const orderNumber = buildOrderNumber();
-  const externalReference = buildExternalReference(orderNumber);
+  const externalReference = orderId;
+  const shippingType = String(payload.shipping?.label || '').toLowerCase().includes('retirada')
+    ? 'pickup'
+    : 'shipping';
 
   const order = await createOrder({
     order: {
+      id: orderId,
       order_number: orderNumber,
       external_reference: externalReference,
       status: 'awaiting_payment',
@@ -116,8 +121,11 @@ async function createCheckout({ payload }) {
           }
         },
         metadata: {
+          order_id: orderId,
           order_number: orderNumber,
-          external_reference: externalReference
+          external_reference: externalReference,
+          shipping_type: shippingType,
+          shipping_label: payload.shipping?.label || ''
         }
       }
     });

@@ -39,7 +39,7 @@ function normalizeWhatsAppNumber(phone) {
 function buildNotificationData(order, data) {
   const carrier = data.carrier || order.shipping_provider || 'Melhor Envio';
   const trackingCode = data.trackingCode || order.shipping_tracking_code || '';
-  const deadline = data.deadline || order.shipping_deadline || 'A confirmar';
+  const deadline = data.deadline || order.shipping_deadline || 'Após confirmação do pagamento';
   const trackingUrl = data.trackingUrl || buildTrackingUrl(trackingCode, carrier) || order.shipping_label_url || '';
 
   return {
@@ -54,7 +54,47 @@ function buildNotificationData(order, data) {
   };
 }
 
-function buildEmailTemplate(payload) {
+function buildPickupEmailTemplate(payload) {
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Retirada presencial do pedido ${payload.orderNumber}</title>
+  </head>
+  <body style="margin:0;padding:0;background:#0b0b0b;color:#ffffff;font-family:Arial,Helvetica,sans-serif;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#0b0b0b;padding:24px 0;">
+      <tr>
+        <td align="center">
+          <table width="680" cellpadding="0" cellspacing="0" style="background:#111111;border:1px solid #222222;border-radius:20px;overflow:hidden;">
+            <tr>
+              <td style="background:#120c0d;padding:30px 32px;text-align:center;">
+                <h1 style="margin:0;color:#ff3c30;font-size:28px;letter-spacing:0.08em;">Rio Groove Store</h1>
+                <p style="margin:12px 0 0;color:#dddddd;font-size:16px;">Seu pagamento foi aprovado com sucesso! 🎉</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:32px;">
+                <p style="font-size:16px;color:#ffffff;">Olá ${payload.name},</p>
+                <p style="font-size:16px;color:#cccccc;line-height:1.7;">Sua retirada presencial da Rio Groove Store já pode ser organizada.</p>
+                <p style="font-size:16px;color:#ffffff;line-height:1.7;">Pedido: <strong>${payload.orderNumber}</strong></p>
+                <p style="font-size:16px;color:#ffffff;line-height:1.7;">Entre em contato com nosso WhatsApp oficial para combinar local, data e horário da retirada:</p>
+                <p style="font-size:20px;font-weight:700;color:#ff3c30;letter-spacing:0.08em;">21 96445-6789</p>
+                <p style="font-size:16px;color:#cccccc;line-height:1.7;">Obrigado por fortalecer a cultura e os movimentos da Rio Groove. 🥁</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="background:#090909;padding:24px;text-align:center;color:#777777;font-size:13px;">Rio Groove Store • Retirada presencial organizada com estilo</td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
+
+function buildTrackingEmailTemplate(payload) {
   return `<!doctype html>
 <html>
   <head>
@@ -115,7 +155,19 @@ function buildEmailTemplate(payload) {
 </html>`;
 }
 
-function buildWhatsAppMessage(payload) {
+function buildPickupWhatsAppMessage() {
+  return `Seu pagamento foi aprovado com sucesso! 🎉
+
+Sua retirada presencial da Rio Groove Store já pode ser organizada.
+
+Entre em contato com nosso WhatsApp oficial para combinar local, data e horário da retirada:
+
+21 96445-6789
+
+Obrigado por fortalecer a cultura e os movimentos da Rio Groove. 🥁`;
+}
+
+function buildTrackingWhatsAppMessage(payload) {
   return `Olá ${payload.name}, seu pedido ${payload.orderNumber} já está a caminho.
 
 Transportadora: ${payload.carrier}
@@ -127,19 +179,59 @@ Acompanhe aqui: ${payload.trackingUrl || 'Link de rastreio em breve'}
 Obrigado por comprar na Rio Groove Store.`;
 }
 
-async function sendTrackingEmail(order, data) {
-  if (!env.smtpHost || !env.smtpUser || !env.smtpPassword || !env.emailFrom) {
-    return {
-      status: 'skipped',
-      reason: 'SMTP não configurado.'
-    };
+async function sendEmailWithResend({ to, subject, html }) {
+  console.log('[NotificationsService] Inicializando Resend', {
+    resendApiKeyConfigured: Boolean(env.resendApiKey),
+    to,
+    subject
+  });
+  if (!env.resendApiKey) {
+    console.error('[NotificationsService] Resend não configurado - RESEND_API_KEY ausente');
+    throw new Error('Resend API key não configurada.');
   }
 
-  if (!order.customer_email) {
-    return {
-      status: 'skipped',
-      reason: 'E-mail do cliente não disponível.'
-    };
+  const payload = {
+    from: env.emailFrom,
+    to: [to],
+    subject,
+    html
+  };
+  console.log('[NotificationsService] Payload enviado ao Resend', payload);
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${env.resendApiKey}`
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const resultText = await response.text();
+  console.log('[NotificationsService] Resposta do Resend', {
+    status: response.status,
+    ok: response.ok,
+    body: resultText
+  });
+
+  if (!response.ok) {
+    throw new Error(`Resend retornou ${response.status}: ${resultText}`);
+  }
+
+  let result = {};
+  try {
+    result = resultText ? JSON.parse(resultText) : {};
+  } catch (error) {
+    console.warn('[NotificationsService] Falha ao parsear resposta do Resend, retornando raw', error.message);
+    result = { raw: resultText };
+  }
+
+  return result;
+}
+
+async function sendEmailWithSmtp({ to, subject, html }) {
+  if (!env.smtpHost || !env.smtpUser || !env.smtpPassword || !env.emailFrom) {
+    throw new Error('SMTP não configurado.');
   }
 
   const transporter = nodemailer.createTransport({
@@ -152,103 +244,180 @@ async function sendTrackingEmail(order, data) {
     }
   });
 
-  const payload = buildNotificationData(order, data);
-  const html = buildEmailTemplate(payload);
-
   const mailOptions = {
     from: env.emailFrom,
-    to: order.customer_email,
-    subject: `Seu pedido ${payload.orderNumber} está a caminho`,
+    to,
+    subject,
     html
   };
 
-  await transporter.sendMail(mailOptions);
-
-  return {
-    status: 'sent',
-    to: order.customer_email
-  };
+  return transporter.sendMail(mailOptions);
 }
 
-async function sendTrackingWhatsApp(order, data) {
-  if (!env.whatsappApiUrl || !env.whatsappApiToken) {
+async function sendEmail(to, subject, html) {
+  console.log('[NotificationsService] Chamando função de email', { to, subject });
+  if (!to) {
+    console.warn('[NotificationsService] E-mail do destinatário ausente, pulando envio.');
     return {
       status: 'skipped',
-      reason: 'WhatsApp API não configurada.'
+      reason: 'E-mail não disponível.'
     };
   }
 
-  if (!order.customer_phone) {
+  if (env.resendApiKey) {
+    const result = await sendEmailWithResend({ to, subject, html }).catch(function (error) {
+      console.error('[NotificationsService] Erro no Resend', error.stack || error.message);
+      throw error;
+    });
     return {
-      status: 'skipped',
-      reason: 'Telefone do cliente não disponível.'
+      status: 'sent',
+      provider: 'resend',
+      response: result
     };
   }
 
-  const destination = normalizeWhatsAppNumber(order.customer_phone);
-  if (!destination) {
-    return {
-      status: 'failed',
-      reason: 'Telefone inválido para WhatsApp.'
-    };
-  }
-
-  const payload = buildNotificationData(order, data);
-  const message = buildWhatsAppMessage(payload);
-
-  const response = await fetch(env.whatsappApiUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${env.whatsappApiToken}`
-    },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      to: destination,
-      type: 'text',
-      text: {
-        preview_url: false,
-        body: message
-      }
-    })
-  });
-
-  const result = await response.text();
-  if (!response.ok) {
-    throw new Error(`WhatsApp API retornou ${response.status}: ${result}`);
-  }
-
+  console.log('[NotificationsService] Resend não configurado, usando SMTP');
+  const result = await sendEmailWithSmtp({ to, subject, html });
   return {
     status: 'sent',
-    to: destination,
+    provider: 'smtp',
     response: result
   };
 }
 
-async function sendOrderTrackingNotification(order, data) {
-  const notificationData = buildNotificationData(order, data);
-  const emailResult = await sendTrackingEmail(order, data).catch(function (error) {
+async function sendWhatsAppZapi(phone, message) {
+  console.log('[NotificationsService] Chamando função WhatsApp Z-API', { phone, hasUrl: Boolean(env.whatsappZapiUrl), hasToken: Boolean(env.whatsappZapiToken) });
+  if (!env.whatsappZapiUrl || !env.whatsappZapiToken) {
+    console.warn('[NotificationsService] WhatsApp Z-API não configurado, pulando envio.');
+    return {
+      status: 'skipped',
+      reason: 'WhatsApp Z-API não configurado.'
+    };
+  }
+
+  const payload = {
+    phone,
+    message
+  };
+  console.log('[NotificationsService] Payload enviado para Z-API', payload);
+
+  const response = await fetch(env.whatsappZapiUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${env.whatsappZapiToken}`
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const resultText = await response.text();
+  console.log('[NotificationsService] Resposta da Z-API', {
+    status: response.status,
+    ok: response.ok,
+    body: resultText
+  });
+
+  if (!response.ok) {
+    throw new Error(`Z-API retornou ${response.status}: ${resultText}`);
+  }
+
+  let result = {};
+  try {
+    result = resultText ? JSON.parse(resultText) : {};
+  } catch (error) {
+    console.warn('[NotificationsService] Falha ao parsear resposta da Z-API, retornando raw', error.message);
+    result = { raw: resultText };
+  }
+
+  return {
+    status: 'sent',
+    provider: 'z-api',
+    response: result
+  };
+}
+
+async function sendPickupNotification(order) {
+  console.log('[NotificationsService] Entrando em sendPickupNotification', {
+    orderId: order.id,
+    customerEmail: order.customer_email,
+    customerPhone: order.customer_phone
+  });
+
+  const emailPayload = buildNotificationData(order, {});
+  const emailHtml = buildPickupEmailTemplate(emailPayload);
+  const emailSubject = `Retirada presencial liberada para seu pedido ${emailPayload.orderNumber}`;
+  const whatsappMessage = buildPickupWhatsAppMessage(emailPayload);
+
+  console.log('[NotificationsService] Chamando sendEmail para pickup', { emailSubject });
+  const emailResult = await sendEmail(order.customer_email, emailSubject, emailHtml).catch(function (error) {
+    console.error('[NotificationsService] Erro ao enviar email de pickup', error.stack || error.message);
     return {
       status: 'failed',
       reason: error.message
     };
   });
 
-  const whatsappResult = await sendTrackingWhatsApp(order, data).catch(function (error) {
-    return {
-      status: 'failed',
-      reason: error.message
-    };
-  });
+  const whatsappDestination = normalizeWhatsAppNumber(order.customer_phone);
+  console.log('[NotificationsService] Chamando sendWhatsAppZapi para pickup', { whatsappDestination });
+  const whatsappResult = whatsappDestination
+    ? await sendWhatsAppZapi(whatsappDestination, whatsappMessage).catch(function (error) {
+        console.error('[NotificationsService] Erro ao enviar WhatsApp de pickup', error.stack || error.message);
+        return {
+          status: 'failed',
+          reason: error.message
+        };
+      })
+    : { status: 'skipped', reason: 'Telefone do cliente não disponível.' };
 
-  const summary = {
+  console.log('[NotificationsService] sendPickupNotification finalizado', { emailResult, whatsappResult });
+  return {
     email: emailResult,
     whatsapp: whatsappResult
   };
+}
 
-  return summary;
+async function sendOrderTrackingNotification(order, data) {
+  console.log('[NotificationsService] Entrando em sendOrderTrackingNotification', {
+    orderId: order.id,
+    customerEmail: order.customer_email,
+    customerPhone: order.customer_phone,
+    data
+  });
+
+  const payload = buildNotificationData(order, data);
+  const emailHtml = buildTrackingEmailTemplate(payload);
+  const emailSubject = `Seu pedido ${payload.orderNumber} está a caminho`;
+  const whatsappMessage = buildTrackingWhatsAppMessage(payload);
+
+  console.log('[NotificationsService] Chamando sendEmail para rastreio', { emailSubject });
+  const emailResult = await sendEmail(order.customer_email, emailSubject, emailHtml).catch(function (error) {
+    console.error('[NotificationsService] Erro ao enviar email de rastreio', error.stack || error.message);
+    return {
+      status: 'failed',
+      reason: error.message
+    };
+  });
+
+  const whatsappDestination = normalizeWhatsAppNumber(order.customer_phone);
+  console.log('[NotificationsService] Chamando sendWhatsAppZapi para rastreio', { whatsappDestination });
+  const whatsappResult = whatsappDestination
+    ? await sendWhatsAppZapi(whatsappDestination, whatsappMessage).catch(function (error) {
+        console.error('[NotificationsService] Erro ao enviar WhatsApp de rastreio', error.stack || error.message);
+        return {
+          status: 'failed',
+          reason: error.message
+        };
+      })
+    : { status: 'skipped', reason: 'Telefone do cliente não disponível.' };
+
+  console.log('[NotificationsService] sendOrderTrackingNotification finalizado', { emailResult, whatsappResult });
+  return {
+    email: emailResult,
+    whatsapp: whatsappResult
+  };
 }
 
 module.exports = {
-  sendOrderTrackingNotification
+  sendOrderTrackingNotification,
+  sendPickupNotification
 };
