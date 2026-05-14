@@ -73,6 +73,8 @@ function validateCheckoutPayload(body = {}) {
   if (address.state.length !== 2) errors.push('Estado deve ter 2 letras.');
 
   const shipping = {
+    id: normalizeString(body.shipping?.id),
+    provider: normalizeString(body.shipping?.provider),
     label: normalizeString(body.shipping?.label || 'Entrega padrão'),
     price: parseMoney(body.shipping?.price),
     deadline: normalizeString(body.shipping?.deadline)
@@ -137,7 +139,25 @@ function validateShippingQuotePayload(body = {}) {
   };
 }
 
+function validateOrderReferencePayload(body = {}) {
+  const errors = [];
+  const reference = normalizeString(body.orderReference || body.externalReference || body.reference);
+
+  if (!reference) {
+    errors.push('Referência do pedido ausente.');
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    data: {
+      reference
+    }
+  };
+}
+
 module.exports = {
   validateCheckoutPayload,
-  validateShippingQuotePayload
+  validateShippingQuotePayload,
+  validateOrderReferencePayload
 };

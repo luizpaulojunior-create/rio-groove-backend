@@ -66,6 +66,15 @@ Obrigatórias no Render:
 - `MELHOR_ENVIO_TOKEN=...` (para cotação de frete)
 - `MELHOR_ENVIO_SANDBOX=false`
 - `MELHOR_ENVIO_ORIGIN_CEP=22723019`
+- `SMTP_HOST=smtp.exemplo.com`
+- `SMTP_PORT=587`
+- `SMTP_SECURE=false`
+- `SMTP_USER=...`
+- `SMTP_PASSWORD=...`
+- `EMAIL_FROM=rio@riogroove.store`
+- `WHATSAPP_API_URL=https://graph.facebook.com/v15.0/YOUR_PHONE_NUMBER_ID/messages`
+- `WHATSAPP_API_TOKEN=...`
+- `WHATSAPP_DEFAULT_COUNTRY=55`
 
 ## Banco de dados no Supabase
 
@@ -90,6 +99,9 @@ npm run dev
 - `GET /api/config/public`
 - `POST /api/checkout`
 - `POST /api/shipping/quote`
+- `POST /api/shipping/purchase`
+- `POST /api/shipping/label`
+- `GET /api/shipping/tracking/:id`
 - `POST /api/orders`
 - `GET /api/orders/:reference`
 - `POST /api/webhooks/mercadopago`
@@ -125,6 +137,8 @@ npm run dev
     "state": "RJ"
   },
   "shipping": {
+    "id": "ID_DA_OPCAO_MELHOR_ENVIO",
+    "provider": "Melhor Envio",
     "label": "SEDEX",
     "price": 29.9,
     "deadline": "2 a 4 dias úteis"
@@ -204,6 +218,8 @@ No painel do Mercado Pago, configure a URL:
 ```txt
 https://SEU-BACKEND.onrender.com/api/webhooks/mercadopago
 ```
+
+Após a aprovação do pagamento, o backend tentará automaticamente comprar o frete e gerar a etiqueta para pedidos que contenham `melhor_envio_shipment_id`.
 
 ## Deploy no Render
 

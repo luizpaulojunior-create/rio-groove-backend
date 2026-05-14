@@ -30,6 +30,8 @@ async function createCheckout({ payload }) {
       customer_cpf: payload.customer.cpf || null,
       accepts_marketing: payload.customer.acceptsMarketing,
       shipping_method: payload.shipping.label,
+      shipping_provider: payload.shipping.provider || null,
+      melhor_envio_shipment_id: payload.shipping.id || null,
       shipping_amount: payload.shipping.price,
       shipping_deadline: payload.shipping.deadline || null,
       shipping_cep: payload.address.cep,

@@ -162,6 +162,185 @@ async function getShippingQuote({ cep, weight, height, width, length }) {
   }
 }
 
+async function ensureShippingRequestBody(order, shipmentId) {
+  if (!order || !shipmentId) {
+    throw new Error('Pedido ou shipmentId inválido para compra de frete.');
+  }
+
+  const products = (order.items || []).map(function (item) {
+    const metadata = item.metadata_json || {};
+    return {
+      weight: Number(metadata.weight || metadata.peso || 0.35),
+      width: Number(metadata.width || metadata.largura || 30),
+      height: Number(metadata.height || metadata.altura || 5),
+      length: Number(metadata.length || metadata.comprimento || 25),
+      quantity: Number(item.quantity) || 1,
+      insurance_value: 0
+    };
+  });
+
+  return {
+    shipment_id: shipmentId,
+    from: {
+      postal_code: env.melhorEnvioOriginCep
+    },
+    to: {
+      postal_code: order.shipping_cep,
+      street_name: order.shipping_street,
+      street_number: order.shipping_number,
+      neighborhood: order.shipping_neighborhood,
+      city: order.shipping_city,
+      federal_unit: order.shipping_state
+    },
+    products
+  };
+}
+
+function getMelhorEnvioBaseUrl() {
+  return env.melhorEnvioSandbox
+    ? 'https://sandbox.melhorenvio.com.br/api/v2/me/shipment'
+    : 'https://www.melhorenvio.com.br/api/v2/me/shipment';
+}
+
+async function executeMelhorEnvioRequest(endpoint, body) {
+  if (!env.melhorEnvioToken) {
+    throw new Error('MELHOR_ENVIO_TOKEN não configurado no backend.');
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(function () {
+    controller.abort();
+  }, 15000);
+
+  try {
+    const url = `${getMelhorEnvioBaseUrl()}${endpoint}`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${env.melhorEnvioToken}`
+      },
+      body: JSON.stringify(body || {}),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Melhor Envio retornou ${response.status}: ${text}`);
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      return await response.json();
+    }
+
+    return await response.arrayBuffer();
+  } catch (error) {
+    clearTimeout(timeoutId);
+    const message = error.name === 'AbortError'
+      ? 'Timeout de conexão com Melhor Envio.'
+      : error.message;
+    throw new Error(message);
+  }
+}
+
+async function purchaseShipping(order, shipmentId) {
+  const requestBody = await ensureShippingRequestBody(order, shipmentId);
+  console.log('[ShippingService] Comprando frete para pedido', order.id, shipmentId);
+  const result = await executeMelhorEnvioRequest('/checkout', requestBody);
+  return {
+    shipmentId: shipmentId,
+    result
+  };
+}
+
+function extractLabelData(result) {
+  if (!result || typeof result !== 'object') return {};
+
+  const trackingCode = result.tracking_code || result.trackingCode || result.tracking?.code || result.tracking?.tracking_code || '';
+  const trackingUrl = result.tracking_url || result.trackingUrl || result.url || result.label_url || result.labelUrl || '';
+  const labelUrl = result.url || result.label_url || result.labelUrl || '';
+
+  return {
+    trackingCode,
+    trackingUrl,
+    labelUrl
+  };
+}
+
+async function generateShippingLabel(shipmentId) {
+  if (!shipmentId) {
+    throw new Error('Shipment ID obrigatório para gerar etiqueta.');
+  }
+
+  console.log('[ShippingService] Gerando etiqueta para shipment', shipmentId);
+  const result = await executeMelhorEnvioRequest('/generate', { shipment_id: shipmentId });
+  const labelData = extractLabelData(result);
+
+  return {
+    shipmentId,
+    result,
+    ...labelData
+  };
+}
+
+async function printShippingLabel(shipmentId) {
+  if (!shipmentId) {
+    throw new Error('Shipment ID obrigatório para imprimir etiqueta.');
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(function () {
+    controller.abort();
+  }, 15000);
+
+  try {
+    const url = `${getMelhorEnvioBaseUrl()}/print`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/pdf, application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${env.melhorEnvioToken}`
+      },
+      body: JSON.stringify({ shipment_id: shipmentId }),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Melhor Envio retornou ${response.status}: ${text}`);
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.includes('application/pdf')) {
+      const buffer = Buffer.from(await response.arrayBuffer());
+      return { shipmentId, pdf: buffer };
+    }
+
+    return { shipmentId, result: await response.json() };
+  } catch (error) {
+    clearTimeout(timeoutId);
+    const message = error.name === 'AbortError'
+      ? 'Timeout de conexão com Melhor Envio.'
+      : error.message;
+    throw new Error(message);
+  }
+}
+
+function isPickupShippingMethod(shippingMethod) {
+  return typeof shippingMethod === 'string' && /retirada|pickup|loja|presencial/i.test(shippingMethod);
+}
+
 module.exports = {
-  getShippingQuote
+  getShippingQuote,
+  purchaseShipping,
+  generateShippingLabel,
+  printShippingLabel,
+  isPickupShippingMethod
 };
