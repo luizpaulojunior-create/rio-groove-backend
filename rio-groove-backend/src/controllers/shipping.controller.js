@@ -1,0 +1,22 @@
+const asyncHandler = require('../utils/asyncHandler');
+const { validateShippingQuotePayload } = require('../utils/validation');
+const { getShippingQuote } = require('../services/shipping.service');
+
+const shippingQuote = asyncHandler(async (req, res) => {
+  const validation = validateShippingQuotePayload(req.body || {});
+
+  if (!validation.valid) {
+    return res.status(400).json({
+      message: 'Payload de cotação de frete inválido.',
+      errors: validation.errors
+    });
+  }
+
+  const shippingOptions = await getShippingQuote(validation.data);
+
+  return res.status(200).json(shippingOptions);
+});
+
+module.exports = {
+  shippingQuote
+};
