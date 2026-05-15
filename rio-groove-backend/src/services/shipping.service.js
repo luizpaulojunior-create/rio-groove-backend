@@ -22,17 +22,12 @@ function normalizeOption(option) {
     id: option.id || `${serviceName}-${companyName}-${option.service_code || ''}`,
     name: serviceName,
     company: companyName,
+    label: `${companyName} / ${serviceName}`,
     price: Number(option.price) || 0,
     delivery_time: option.delivery_time || option.deadline || '',
     currency: option.currency || 'BRL',
     service_code: option.service_code || ''
   };
-}
-
-function isStableProvider(option) {
-  return STABLE_PROVIDER_PATTERNS.some(function (pattern) {
-    return pattern.test(option.company) || pattern.test(option.name) || pattern.test(option.service_code);
-  });
 }
 
 function isExpressOption(option) {
@@ -51,11 +46,10 @@ function sortOptions(options) {
   });
 }
 
-function filterStableOptions(options) {
-  const stable = options.filter(function (option) {
-    return isStableProvider(option) || isExpressOption(option);
+function filterValidOptions(options) {
+  return options.filter(function (option) {
+    return option.price > 0 && option.company && option.name;
   });
-  return stable.length ? stable : options.slice(0, 5);
 }
 
 async function getShippingQuote({ cep, weight, height, width, length }) {
@@ -86,7 +80,8 @@ async function getShippingQuote({ cep, weight, height, width, length }) {
     ]
   };
 
-  console.log('[ShippingQuote] Solicitação de frete recebida', {
+  console.log('[MelhorEnvio] Payload enviado', JSON.stringify(requestBody, null, 2));
+  console.log('[MelhorEnvio] Solicitação de frete recebida', {
     cep,
     weight,
     height,
@@ -117,37 +112,39 @@ async function getShippingQuote({ cep, weight, height, width, length }) {
     if (!response.ok) {
       const responseText = await response.text();
       const message = `Melhor Envio retornou ${response.status}: ${responseText}`;
-      console.error('[ShippingQuote] API retornou erro', message);
+      console.error('[MelhorEnvio] API retornou erro', message);
       throw new Error(message);
     }
 
     const payload = await response.json();
+    console.log('[MelhorEnvio] Resposta completa da API', payload);
 
     if (!Array.isArray(payload)) {
-      console.error('[ShippingQuote] Resposta inválida da API de frete', payload);
+      console.error('[MelhorEnvio] Resposta inválida da API de frete', payload);
       throw new Error('Resposta inesperada da API de frete da Melhor Envio.');
     }
 
     const allOptions = payload.map(normalizeOption);
-    console.log('[ShippingQuote] Opções recebidas', allOptions.map(function (option) {
+    console.log('[MelhorEnvio] Opções brutas recebidas', allOptions.map(function (option) {
       return {
         id: option.id,
-        company: option.company,
-        name: option.name,
+        label: option.label,
         price: option.price,
-        delivery_time: option.delivery_time
+        delivery_time: option.delivery_time,
+        service_code: option.service_code
       };
     }));
 
-    const filtered = filterStableOptions(allOptions);
-    const sorted = sortOptions(filtered).slice(0, 5);
+    const filtered = filterValidOptions(allOptions);
+    const sorted = sortOptions(filtered);
 
-    console.log('[ShippingQuote] Opções filtradas e ordenadas', sorted.map(function (option) {
+    console.log('[MelhorEnvio] Serviços renderizados no backend', sorted.map(function (option) {
       return {
         id: option.id,
-        label: `${option.company} - ${option.name}`,
+        label: option.label,
         price: option.price,
-        delivery_time: option.delivery_time
+        delivery_time: option.delivery_time,
+        service_code: option.service_code
       };
     }));
 
@@ -157,7 +154,7 @@ async function getShippingQuote({ cep, weight, height, width, length }) {
     const message = error.name === 'AbortError'
       ? 'Timeout de conexão com Melhor Envio.'
       : error.message;
-    console.error('[ShippingQuote] Falha na cotação de frete', message);
+    console.error('[MelhorEnvio] Falha na cotação de frete', message);
     throw new Error(message);
   }
 }

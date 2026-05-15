@@ -19,12 +19,12 @@ const {
 } = require('../services/notifications.service');
 
 const shippingQuote = asyncHandler(async (req, res) => {
-  console.log('[ShippingController] Cotação de frete requisitada', req.body);
+  console.log('[MelhorEnvio] Cotação de frete requisitada', req.body);
 
   const validation = validateShippingQuotePayload(req.body || {});
 
   if (!validation.valid) {
-    console.warn('[ShippingController] Payload inválido', validation.errors);
+    console.warn('[MelhorEnvio] Payload inválido', validation.errors);
     return res.status(400).json({
       message: 'Payload de cotação de frete inválido.',
       errors: validation.errors
@@ -32,6 +32,7 @@ const shippingQuote = asyncHandler(async (req, res) => {
   }
 
   const shippingOptions = await getShippingQuote(validation.data);
+  console.log('[MelhorEnvio] Retornando opções de cotação', { count: shippingOptions.length });
 
   return res.status(200).json(shippingOptions);
 });
