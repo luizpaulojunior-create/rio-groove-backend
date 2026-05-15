@@ -86,6 +86,11 @@ function validateCheckoutPayload(body = {}) {
 
   const subtotal = roundMoney(items.reduce((sum, item) => sum + item.lineTotal, 0));
   const total = roundMoney(subtotal + shipping.price);
+  const externalReference = normalizeString(body.external_reference || body.externalReference || body.reference);
+  const notificationUrl = normalizeString(body.notification_url || body.notificationUrl);
+  const backUrls = body.back_urls || body.backUrls || undefined;
+  const autoReturn = normalizeString(body.auto_return || body.autoReturn);
+  const metadata = typeof body.metadata === 'object' && body.metadata !== null ? body.metadata : undefined;
 
   return {
     valid: errors.length === 0,
@@ -97,6 +102,11 @@ function validateCheckoutPayload(body = {}) {
       shipping,
       subtotal,
       total,
+      external_reference: externalReference,
+      notification_url: notificationUrl,
+      back_urls: backUrls,
+      auto_return: autoReturn,
+      metadata,
       rawPayload: body
     }
   };

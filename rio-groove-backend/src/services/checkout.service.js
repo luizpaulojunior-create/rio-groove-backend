@@ -15,7 +15,8 @@ const {
 async function createCheckout({ payload }) {
   const orderId = randomUUID();
   const orderNumber = buildOrderNumber();
-  const externalReference = orderId;
+  const externalReference =
+    payload.external_reference || payload.externalReference || orderId;
   const shippingType = String(payload.shipping?.label || '').toLowerCase().includes('retirada')
     ? 'pickup'
     : 'shipping';
@@ -87,48 +88,59 @@ async function createCheckout({ payload }) {
       });
     }
 
-    const preference = await preferenceClient.create({
-      body: {
-        items: preferenceItems,
-        external_reference: externalReference,
-        statement_descriptor: env.statementDescriptor,
-        notification_url: `${env.backendUrl}/api/webhooks/mercadopago`,
-        back_urls: {
-          success: `${env.frontendUrl}/?payment=success&external_reference=${externalReference}`,
-          pending: `${env.frontendUrl}/?payment=pending&external_reference=${externalReference}`,
-          failure: `${env.frontendUrl}/?payment=failure&external_reference=${externalReference}`
+    const notificationUrl = payload.notification_url || payload.notificationUrl || `${env.backendUrl}/api/webhooks/mercadopago`;
+    const backUrls = payload.back_urls || payload.backUrls || {
+      success: `${env.frontendUrl}/?payment=success&external_reference=${externalReference}`,
+      pending: `${env.frontendUrl}/?payment=pending&external_reference=${externalReference}`,
+      failure: `${env.frontendUrl}/?payment=failure&external_reference=${externalReference}`
+    };
+    const autoReturn = payload.auto_return || payload.autoReturn || 'approved';
+    const metadata = {
+      order_id: orderId,
+      order_number: orderNumber,
+      shipping_type: shippingType,
+      shipping_label: payload.shipping?.label || '',
+      ...payload.metadata
+    };
+
+    const preferenceBody = {
+      items: preferenceItems,
+      external_reference: externalReference,
+      statement_descriptor: env.statementDescriptor,
+      notification_url: notificationUrl,
+      back_urls: backUrls,
+      auto_return: autoReturn,
+      payer: {
+        name: payload.customer.name,
+        email: payload.customer.email,
+        phone: {
+          number: onlyDigits(payload.customer.phone)
         },
-        auto_return: 'approved',
-        payer: {
-          name: payload.customer.name,
-          email: payload.customer.email,
-          phone: {
-            number: onlyDigits(payload.customer.phone)
-          },
-          identification: payload.customer.cpf
-            ? {
-                type: 'CPF',
-                number: payload.customer.cpf
-              }
-            : undefined,
-          address: {
-            zip_code: payload.address.cep,
-            street_name: payload.address.street,
-            street_number: payload.address.number,
-            neighborhood: payload.address.neighborhood,
-            city: payload.address.city,
-            federal_unit: payload.address.state
-          }
-        },
-        metadata: {
-          order_id: orderId,
-          order_number: orderNumber,
-          external_reference: externalReference,
-          shipping_type: shippingType,
-          shipping_label: payload.shipping?.label || ''
+        identification: payload.customer.cpf
+          ? {
+              type: 'CPF',
+              number: payload.customer.cpf
+            }
+          : undefined,
+        address: {
+          zip_code: payload.address.cep,
+          street_name: payload.address.street,
+          street_number: payload.address.number,
+          neighborhood: payload.address.neighborhood,
+          city: payload.address.city,
+          federal_unit: payload.address.state
         }
-      }
+      },
+      metadata
+    };
+
+    console.log('[MP] BODY FINAL ENVIADO:', JSON.stringify(preferenceBody, null, 2));
+
+    const preference = await preferenceClient.create({
+      body: preferenceBody
     });
+
+    console.log('[MP] RESPOSTA API MERCADO PAGO:', JSON.stringify(preference, null, 2));
 
     await updateOrderById(order.id, {
       mercado_pago_preference_id: preference.id,
