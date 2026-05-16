@@ -14,20 +14,24 @@ async function getAuthorizationUrl() {
 
 async function handleCallback(code) {
   console.log('[MelhorEnvio OAuth] Code recebido', code);
+  console.log('[MelhorEnvio OAuth] Iniciando token exchange');
   
+  const params = new URLSearchParams();
+  params.append('grant_type', 'authorization_code');
+  params.append('client_id', env.melhorEnvioClientId);
+  params.append('client_secret', env.melhorEnvioClientSecret);
+  params.append('redirect_uri', env.melhorEnvioRedirectUri);
+  params.append('code', code);
+
+  console.log('[MelhorEnvio OAuth] Payload OAuth formatado corretamente');
+
   const response = await fetch(`${ME_OAUTH_BASE}/oauth/token`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded',
       'Accept': 'application/json'
     },
-    body: JSON.stringify({
-      grant_type: 'authorization_code',
-      client_id: env.melhorEnvioClientId,
-      client_secret: env.melhorEnvioClientSecret,
-      redirect_uri: env.melhorEnvioRedirectUri,
-      code: code
-    })
+    body: params
   });
 
   if (!response.ok) {
@@ -82,19 +86,20 @@ async function getValidToken() {
   return data.access_token;
 }
 
-async function refreshToken(refreshToken) {
+async function refreshToken(refreshTokenValue) {
+  const params = new URLSearchParams();
+  params.append('grant_type', 'refresh_token');
+  params.append('refresh_token', refreshTokenValue);
+  params.append('client_id', env.melhorEnvioClientId);
+  params.append('client_secret', env.melhorEnvioClientSecret);
+
   const response = await fetch(`${ME_OAUTH_BASE}/oauth/token`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
+      'Content-Type': 'application/x-www-form-urlencoded',
       'Accept': 'application/json'
     },
-    body: JSON.stringify({
-      grant_type: 'refresh_token',
-      refresh_token: refreshToken,
-      client_id: env.melhorEnvioClientId,
-      client_secret: env.melhorEnvioClientSecret
-    })
+    body: params
   });
 
   if (!response.ok) {
