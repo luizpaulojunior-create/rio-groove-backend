@@ -225,6 +225,14 @@ async function processMercadoPagoWebhook(req) {
   const hasAlreadyNotified = Boolean(updatedOrder.shipping_notification_sent_at);
 
   if (payment.status === 'approved') {
+    if (existingOrder.status === 'paid') {
+      console.log('[PaymentsService] Pedido já processado anteriormente');
+      return {
+        ignored: true,
+        reason: 'Pedido já processado anteriormente.'
+      };
+    }
+
     // Carregar os itens completos para o email admin e outras funções (se ainda não carregados)
     const orderWithItems = await getOrderWithItems(existingOrder.external_reference);
 
