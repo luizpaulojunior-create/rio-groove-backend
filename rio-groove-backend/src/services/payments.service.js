@@ -225,9 +225,13 @@ async function processMercadoPagoWebhook(req) {
     payment_payload: payment
   });
 
+  let shipping_type = String(metadata.shipping_type || '').toLowerCase().trim();
+  if (!shipping_type && updatedOrder && updatedOrder.shipping_method) {
+    shipping_type = isPickupShippingMethod(updatedOrder.shipping_method) ? 'pickup' : 'shipping';
+  }
   const pickupOrder = isPickupShipping(payment, merchantOrder, updatedOrder);
   console.log('[PaymentsService] shipping_type identificado', {
-    shipping_type: String(metadata.shipping_type || '').toLowerCase(),
+    shipping_type,
     pickupOrder
   });
   const hasAlreadyNotified = Boolean(updatedOrder.shipping_notification_sent_at);
@@ -251,7 +255,27 @@ async function processMercadoPagoWebhook(req) {
       }
     }
 
-    if (pickupOrder) {
+    const orderId = updatedOrder.id;
+    if (shipping_type === 'shipping') {
+      console.log('[PaymentsService] Fluxo Melhor Envio ativado');
+      console.log('[PaymentsService] Criando envio Melhor Envio para pedido', orderId);
+      if (updatedOrder.shipping_status !== 'processing') {
+        try {
+          console.log('[MelhorEnvio] Criando envio no carrinho');
+          const shipmentId = await createShipmentInCart(orderWithItems, updatedOrder.melhor_envio_shipment_id || 1);
+          console.log('[MelhorEnvio] Envio criado com sucesso', { shipmentId });
+
+          await updateOrderByExternalReference(existingOrder.external_reference, {
+            melhor_envio_shipment_id: String(shipmentId), // Salvar shipment_id retornado
+            shipping_status: 'processing'
+          });
+        } catch (error) {
+          console.error('[MelhorEnvio] Erro ao criar envio', error.stack || error.message);
+        }
+      } else {
+        console.log('[PaymentsService] Envio já criado no carrinho do Melhor Envio para o pedido', updatedOrder.id);
+      }
+    } else if (pickupOrder || shipping_type === 'pickup') {
       console.log('[PaymentsService] Entrando na condição de pickup');
       if (!hasAlreadyNotified) {
         try {
@@ -273,31 +297,10 @@ async function processMercadoPagoWebhook(req) {
       } else {
         console.log('[PaymentsService] Pickup já notificado anteriormente para pedido', updatedOrder.id);
       }
-    } else if (updatedOrder.melhor_envio_shipment_id && !isPickupShippingMethod(updatedOrder.shipping_method)) {
-      if (updatedOrder.shipping_status !== 'processing') {
-        try {
-          console.log('[MelhorEnvio] Criando envio no carrinho');
-          const orderWithItems = await getOrderWithItems(existingOrder.external_reference);
-          
-          const shipmentId = await createShipmentInCart(orderWithItems, updatedOrder.melhor_envio_shipment_id);
-          
-          console.log('[MelhorEnvio] Envio criado com sucesso', { shipmentId });
-
-          await updateOrderByExternalReference(existingOrder.external_reference, {
-            melhor_envio_shipment_id: shipmentId, // Salvar shipment_id
-            shipping_status: 'processing'
-          });
-        } catch (error) {
-          console.error('[MelhorEnvio] Erro ao criar envio', error.message || error);
-        }
-      } else {
-        console.log('[PaymentsService] Envio já criado no carrinho do Melhor Envio para o pedido', updatedOrder.id);
-      }
     } else {
       if (!hasAlreadyNotified) {
         try {
           console.log('[PaymentsService] Iniciando fluxo genérico de notificação para frete (sem Melhor Envio)', updatedOrder.id);
-          const orderWithItems = await getOrderWithItems(existingOrder.external_reference);
           const notificationResult = await sendOrderTrackingNotification(orderWithItems, {
             carrier: updatedOrder.shipping_provider || 'Transportadora',
             trackingCode: '',
