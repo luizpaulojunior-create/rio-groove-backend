@@ -8,8 +8,9 @@ const ME_OAUTH_BASE = env.melhorEnvioSandbox
 async function getAuthorizationUrl() {
   console.log('[MelhorEnvio OAuth] Authorization iniciado');
   const clientId = env.melhorEnvioClientId;
-  const redirectUri = env.melhorEnvioRedirectUri;
-  return `${ME_OAUTH_BASE}/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=cart-read cart-write companies-read companies-write document-read document-write ecommerce-read ecommerce-write offset-read offset-write products-read products-write shipping-calculate shipping-cancel shipping-checkout shipping-companies shipping-generate shipping-preview shipping-print shipping-share shipping-tracking tags-read tags-write transactions-read`;
+  const redirectUri = encodeURIComponent(env.melhorEnvioRedirectUri || '');
+  const scope = encodeURIComponent('cart-read cart-write companies-read companies-write document-read document-write ecommerce-read ecommerce-write offset-read offset-write products-read products-write shipping-calculate shipping-cancel shipping-checkout shipping-companies shipping-generate shipping-preview shipping-print shipping-share shipping-tracking tags-read tags-write transactions-read');
+  return `${ME_OAUTH_BASE}/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}`;
 }
 
 async function handleCallback(code) {
@@ -31,7 +32,7 @@ async function handleCallback(code) {
       'Content-Type': 'application/x-www-form-urlencoded',
       'Accept': 'application/json'
     },
-    body: params
+    body: params.toString()
   });
 
   if (!response.ok) {
@@ -99,7 +100,7 @@ async function refreshToken(refreshTokenValue) {
       'Content-Type': 'application/x-www-form-urlencoded',
       'Accept': 'application/json'
     },
-    body: params
+    body: params.toString()
   });
 
   if (!response.ok) {

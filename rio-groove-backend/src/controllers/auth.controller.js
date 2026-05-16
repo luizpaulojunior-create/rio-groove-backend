@@ -11,7 +11,10 @@ async function loginMelhorEnvio(req, res) {
 
 async function callbackMelhorEnvio(req, res) {
   try {
+    console.log('[MelhorEnvio OAuth] Query recebida:', req.query);
     const { code } = req.query;
+    console.log('[MelhorEnvio OAuth] Authorization code:', code);
+
     if (!code) {
       return res.status(400).send('Código não fornecido');
     }
