@@ -7,8 +7,7 @@ const {
   registerWebhookEvent
 } = require('./orders.service');
 const {
-  purchaseShipping,
-  generateShippingLabel,
+  createShipmentInCart,
   isPickupShippingMethod
 } = require('./shipping.service');
 const {
@@ -205,6 +204,15 @@ async function processMercadoPagoWebhook(req) {
     return { ignored: true, reason: 'Pedido não encontrado.' };
   }
 
+  if (payment.status === 'approved' && existingOrder.status === 'paid') {
+    console.log('[PaymentsService] Idempotência validada antes dos side effects');
+    console.log('[PaymentsService] Pedido já processado anteriormente');
+    return {
+      ignored: true,
+      reason: 'Pedido já processado anteriormente.'
+    };
+  }
+
   const statusMap = mapMercadoPagoPaymentStatus(payment.status);
   const updatedOrder = await updateOrderByExternalReference(existingOrder.external_reference, {
     status: statusMap.orderStatus,
@@ -225,13 +233,7 @@ async function processMercadoPagoWebhook(req) {
   const hasAlreadyNotified = Boolean(updatedOrder.shipping_notification_sent_at);
 
   if (payment.status === 'approved') {
-    if (existingOrder.status === 'paid') {
-      console.log('[PaymentsService] Pedido já processado anteriormente');
-      return {
-        ignored: true,
-        reason: 'Pedido já processado anteriormente.'
-      };
-    }
+    console.log('[PaymentsService] Pedido marcado como paid antes das notificações');
 
     // Carregar os itens completos para o email admin e outras funções (se ainda não carregados)
     const orderWithItems = await getOrderWithItems(existingOrder.external_reference);
@@ -272,47 +274,24 @@ async function processMercadoPagoWebhook(req) {
         console.log('[PaymentsService] Pickup já notificado anteriormente para pedido', updatedOrder.id);
       }
     } else if (updatedOrder.melhor_envio_shipment_id && !isPickupShippingMethod(updatedOrder.shipping_method)) {
-      if (!updatedOrder.shipping_label_generated_at) {
+      if (updatedOrder.shipping_status !== 'processing') {
         try {
-          console.log('[PaymentsService] Iniciando fluxo de frete e etiqueta para pedido', updatedOrder.id);
+          console.log('[MelhorEnvio] Criando envio no carrinho');
           const orderWithItems = await getOrderWithItems(existingOrder.external_reference);
-          const purchaseResult = await purchaseShipping(orderWithItems, updatedOrder.melhor_envio_shipment_id);
-          const labelResult = await generateShippingLabel(updatedOrder.melhor_envio_shipment_id);
-          const labelUrl = labelResult.result?.url || labelResult.result?.label_url || labelResult.labelUrl || null;
-          const trackingCode = labelResult.trackingCode || labelResult.result?.tracking_code || labelResult.result?.trackingCode || '';
-          const trackingUrl = labelResult.trackingUrl || labelResult.result?.tracking_url || labelResult.result?.trackingUrl || labelUrl || null;
-
-          console.log('[PaymentsService] Chamando sendOrderTrackingNotification', {
-            orderId: updatedOrder.id,
-            trackingCode,
-            trackingUrl
-          });
-          const notificationResult = await sendOrderTrackingNotification(orderWithItems, {
-            carrier: updatedOrder.shipping_provider,
-            trackingCode,
-            deadline: updatedOrder.shipping_deadline,
-            trackingUrl
-          });
-          console.log('[PaymentsService] Resultado da sendOrderTrackingNotification', notificationResult);
+          
+          const shipmentId = await createShipmentInCart(orderWithItems, updatedOrder.melhor_envio_shipment_id);
+          
+          console.log('[MelhorEnvio] Envio criado com sucesso', { shipmentId });
 
           await updateOrderByExternalReference(existingOrder.external_reference, {
-            shipping_status: 'label_generated',
-            shipping_purchased_at: new Date().toISOString(),
-            shipping_label_generated_at: new Date().toISOString(),
-            shipping_label_url: labelUrl,
-            shipping_tracking_code: trackingCode || updatedOrder.shipping_tracking_code,
-            shipping_notification_status: [notificationResult.email?.status, notificationResult.whatsapp?.status].includes('sent') ? 'sent' : 'failed',
-            shipping_notification_sent_at: new Date().toISOString(),
-            shipping_notification_log: JSON.stringify(notificationResult),
-            shipping_email_status: notificationResult.email?.status || 'skipped',
-            shipping_whatsapp_status: notificationResult.whatsapp?.status || 'skipped'
+            melhor_envio_shipment_id: shipmentId, // Salvar shipment_id
+            shipping_status: 'processing'
           });
-          console.log('[PaymentsService] Frete comprado, etiqueta gerada e notificações enviadas para pedido', updatedOrder.id);
         } catch (error) {
-          console.error('[PaymentsService] Falha ao processar frete após pagamento aprovado', error.stack || error.message);
+          console.error('[MelhorEnvio] Erro ao criar envio', error.message || error);
         }
       } else {
-        console.log('[PaymentsService] Etiqueta já gerada anteriormente para pedido', updatedOrder.id);
+        console.log('[PaymentsService] Envio já criado no carrinho do Melhor Envio para o pedido', updatedOrder.id);
       }
     } else {
       if (!hasAlreadyNotified) {

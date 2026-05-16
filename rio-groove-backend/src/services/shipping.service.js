@@ -330,6 +330,117 @@ async function printShippingLabel(shipmentId) {
   }
 }
 
+async function createShipmentInCart(order, serviceId) {
+  if (!env.melhorEnvioToken) {
+    throw new Error('MELHOR_ENVIO_TOKEN não configurado no backend.');
+  }
+
+  const apiUrl = env.melhorEnvioSandbox
+    ? 'https://sandbox.melhorenvio.com.br/api/v2/me/cart'
+    : 'https://www.melhorenvio.com.br/api/v2/me/cart';
+
+  let totalWeight = 0;
+  let maxHeight = 0;
+  let maxWidth = 0;
+  let maxLength = 0;
+
+  const products = (order.items || []).map(function (item) {
+    const metadata = item.metadata_json || {};
+    const qty = Number(item.quantity) || 1;
+    const w = Number(metadata.weight || metadata.peso || 0.35);
+    const h = Number(metadata.height || metadata.altura || 5);
+    const wd = Number(metadata.width || metadata.largura || 30);
+    const l = Number(metadata.length || metadata.comprimento || 25);
+    
+    totalWeight += w * qty;
+    maxHeight = Math.max(maxHeight, h);
+    maxWidth = Math.max(maxWidth, wd);
+    maxLength = Math.max(maxLength, l);
+
+    return {
+      name: item.product_name || 'Produto Rio Groove',
+      quantity: qty,
+      unitary_value: Number(item.unit_price) || 0
+    };
+  });
+
+  const totalItems = (order.items || []).reduce((sum, item) => sum + (Number(item.quantity) || 1), 0);
+  if (totalItems > 3) {
+    maxWidth = Math.max(maxWidth, 40);
+    maxLength = Math.max(maxLength, 35);
+  }
+
+  const volumes = [
+    {
+      weight: Math.max(totalWeight, 0.35),
+      height: Math.max(maxHeight, 3),
+      width: Math.max(maxWidth, 20),
+      length: Math.max(maxLength, 20)
+    }
+  ];
+
+  const requestBody = {
+    service: parseInt(String(serviceId).split('-')[0], 10) || 1,
+    from: {
+      postal_code: env.melhorEnvioOriginCep || '22723019'
+    },
+    to: {
+      name: order.customer_name || 'Cliente',
+      phone: String(order.customer_phone || '').replace(/\D/g, '').slice(0, 11),
+      email: order.customer_email || 'cliente@riogroove.com.br',
+      document: String(order.customer_cpf || '').replace(/\D/g, ''),
+      address: order.shipping_street || 'Rua',
+      number: order.shipping_number || 'S/N',
+      complement: order.shipping_complement || '',
+      district: order.shipping_neighborhood || 'Bairro',
+      city: order.shipping_city || 'Cidade',
+      state_abbr: order.shipping_state || 'RJ',
+      postal_code: String(order.shipping_cep || '').replace(/\D/g, '')
+    },
+    products,
+    volumes,
+    options: {
+      insurance_value: 0,
+      receipt: false,
+      own_hand: false,
+      reverse_manage: false,
+      non_commercial: true
+    }
+  };
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+  try {
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${env.melhorEnvioToken}`
+      },
+      body: JSON.stringify(requestBody),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Melhor Envio retornou ${response.status}: ${text}`);
+    }
+
+    const data = await response.json();
+    return data.id;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    const message = error.name === 'AbortError'
+      ? 'Timeout de conexão com Melhor Envio.'
+      : error.message;
+    throw new Error(message);
+  }
+}
+
 function isPickupShippingMethod(shippingMethod) {
   return typeof shippingMethod === 'string' && /retirada|pickup|loja|presencial/i.test(shippingMethod);
 }
@@ -339,5 +450,6 @@ module.exports = {
   purchaseShipping,
   generateShippingLabel,
   printShippingLabel,
-  isPickupShippingMethod
+  isPickupShippingMethod,
+  createShipmentInCart
 };
