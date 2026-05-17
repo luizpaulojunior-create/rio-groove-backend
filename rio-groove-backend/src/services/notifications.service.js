@@ -245,15 +245,6 @@ function buildAdminEmailTemplate(order) {
 
 async function sendEmailWithResend({ to, subject, html }) {
   console.log('[ResendSender] Inicializando integração Resend...');
-  
-  console.log({
-    hasKey: !!process.env.RESEND_API_KEY,
-    prefix: process.env.RESEND_API_KEY?.substring(0, 5),
-    length: process.env.RESEND_API_KEY?.length,
-    envHasKey: !!env.resendApiKey,
-    envPrefix: env.resendApiKey?.substring(0, 5),
-    envLength: env.resendApiKey?.length
-  });
 
   if (!env.resendApiKey) {
     console.error('[ResendSender] Resend não configurado - RESEND_API_KEY ausente');
@@ -522,15 +513,6 @@ async function sendAdminNotification(order) {
 
 async function testResend() {
   console.log('[TestResend] Enviando email teste...');
-  
-  console.log({
-    hasKey: !!process.env.RESEND_API_KEY,
-    prefix: process.env.RESEND_API_KEY?.substring(0, 5),
-    length: process.env.RESEND_API_KEY?.length,
-    envHasKey: !!env.resendApiKey,
-    envPrefix: env.resendApiKey?.substring(0, 5),
-    envLength: env.resendApiKey?.length
-  });
 
   const testHtml = '<h1>Teste de E-mail Resend</h1><p>Se você recebeu isso, a API Key e o sender estão funcionando corretamente no backend da Rio Groove.</p>';
   try {
