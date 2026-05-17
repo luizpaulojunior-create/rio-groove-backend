@@ -73,7 +73,7 @@ function validateCheckoutPayload(body = {}) {
   if (address.state.length !== 2) errors.push('Estado deve ter 2 letras.');
 
   const shipping = {
-    id: normalizeString(body.shipping?.id),
+    id: normalizeString(body.shipping?.id || body.shipping?.service_id),
     provider: normalizeString(body.shipping?.provider),
     label: normalizeString(body.shipping?.label || 'Entrega padrão'),
     price: parseMoney(body.shipping?.price),

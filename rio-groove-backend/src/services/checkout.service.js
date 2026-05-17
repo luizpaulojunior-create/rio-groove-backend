@@ -7,6 +7,7 @@ const {
   deleteOrder,
   updateOrderById
 } = require('./orders.service');
+const supabase = require('../lib/supabase');
 const {
   buildOrderNumber,
   onlyDigits
@@ -21,6 +22,25 @@ async function createCheckout({ payload }) {
     ? 'pickup'
     : 'shipping';
 
+  console.log('[Checkout] Validando estoque...');
+  for (const item of payload.items) {
+    if (item.slug) {
+      const { data: product } = await supabase
+        .from('products')
+        .select('stock, name')
+        .eq('slug', item.slug)
+        .single();
+        
+      if (product && typeof product.stock === 'number') {
+        if (product.stock < item.quantity) {
+          throw new Error(`Estoque insuficiente para a peça "${item.productName}". Disponível: ${product.stock}.`);
+        }
+      }
+    }
+  }
+
+  console.log('[CHECKOUT BACKEND] Shipping recebido', payload.shipping);
+  
   console.log('[Checkout] Criando pedido', orderId);
 
   const order = await createOrder({
@@ -104,6 +124,7 @@ async function createCheckout({ payload }) {
       order_number: orderNumber,
       shipping_type: shippingType,
       shipping_label: payload.shipping?.label || '',
+      shipping_service_id: payload.shipping?.id || '',
       ...payload.metadata
     };
 

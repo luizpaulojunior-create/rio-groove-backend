@@ -93,6 +93,14 @@ create table if not exists public.order_items (
   created_at timestamptz not null default timezone('utc', now())
 );
 
+create table if not exists public.oauth_tokens (
+  provider text primary key,
+  access_token text not null,
+  refresh_token text not null,
+  expires_at timestamptz not null,
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
 create table if not exists public.webhook_events (
   id uuid primary key default gen_random_uuid(),
   provider text not null,

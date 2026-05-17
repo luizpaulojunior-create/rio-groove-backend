@@ -19,6 +19,8 @@ const { mapMercadoPagoPaymentStatus } = require('../utils/order');
 
 const MP_API_BASE = 'https://api.mercadopago.com';
 
+const processingWebhooks = new Set();
+
 function extractNotificationInfo(req) {
   const rawTopic = req.body?.type || req.query.type || req.query.topic || req.body?.topic || '';
   const rawAction = req.body?.action || req.query.action || '';
@@ -193,6 +195,13 @@ async function processMercadoPagoWebhook(req) {
     return { ignored: true, reason: 'external_reference não encontrado.' };
   }
 
+  if (processingWebhooks.has(externalReference)) {
+    console.log('[PaymentsService] Abortando webhook duplicado antes de qualquer side effect');
+    return { ignored: true, reason: 'Race condition prevenida. Webhook simultâneo.' };
+  }
+  processingWebhooks.add(externalReference);
+  setTimeout(() => processingWebhooks.delete(externalReference), 30000);
+
   const existingOrder = await getOrderByReference(externalReference);
   console.log('[PaymentsService] Pedido encontrado no banco', {
     external_reference: externalReference,
@@ -200,13 +209,15 @@ async function processMercadoPagoWebhook(req) {
     status: existingOrder?.status
   });
   if (!existingOrder) {
+    processingWebhooks.delete(externalReference);
     console.warn('[PaymentsService] Retornando cedo: pedido não encontrado no banco');
     return { ignored: true, reason: 'Pedido não encontrado.' };
   }
 
   if (payment.status === 'approved' && existingOrder.status === 'paid') {
-    console.log('[PaymentsService] Idempotência validada antes dos side effects');
+    console.log('[PaymentsService] Abortando webhook duplicado antes de qualquer side effect');
     console.log('[PaymentsService] Pedido já processado anteriormente');
+    processingWebhooks.delete(externalReference);
     return {
       ignored: true,
       reason: 'Pedido já processado anteriormente.'
@@ -253,6 +264,32 @@ async function processMercadoPagoWebhook(req) {
       } catch (error) {
         console.error('[AdminEmail] erro:', error);
       }
+
+      // Reduzir estoque
+      console.log('[PaymentsService] Reduzindo estoque dos produtos...');
+      const supabase = require('../lib/supabase');
+      for (const item of orderWithItems.items) {
+        if (item.product_slug) {
+          try {
+            const { data: product } = await supabase
+              .from('products')
+              .select('stock')
+              .eq('slug', item.product_slug)
+              .single();
+              
+            if (product && typeof product.stock === 'number') {
+              const newStock = Math.max(0, product.stock - item.quantity);
+              await supabase
+                .from('products')
+                .update({ stock: newStock })
+                .eq('slug', item.product_slug);
+              console.log(`[PaymentsService] Estoque reduzido para ${item.product_slug}: ${product.stock} -> ${newStock}`);
+            }
+          } catch (e) {
+            console.error(`[PaymentsService] Erro ao reduzir estoque do produto ${item.product_slug}:`, e);
+          }
+        }
+      }
     }
 
     const orderId = updatedOrder.id;
@@ -261,8 +298,24 @@ async function processMercadoPagoWebhook(req) {
       console.log('[PaymentsService] Criando envio Melhor Envio para pedido', orderId);
       if (updatedOrder.shipping_status !== 'processing') {
         try {
-          console.log('[MelhorEnvio] Criando envio no carrinho');
-          const shipmentId = await createShipmentInCart(orderWithItems, updatedOrder.melhor_envio_shipment_id || 1);
+          const serviceId = metadata.shipping_service_id || 
+                            existingOrder.raw_checkout_payload?.shipping?.id || 
+                            existingOrder.raw_checkout_payload?.shipping?.service_id ||
+                            updatedOrder.melhor_envio_shipment_id;
+
+          console.log('[MelhorEnvio] Service ID recuperado:', {
+            serviceId,
+            fromMetadata: metadata.shipping_service_id,
+            fromPayload: existingOrder.raw_checkout_payload?.shipping?.id,
+            fromShipmentId: updatedOrder.melhor_envio_shipment_id
+          });
+
+          if (!serviceId || serviceId === 'null') {
+            throw new Error(`Nenhum ID de serviço de frete válido encontrado para o pedido ${orderId}`);
+          }
+
+          console.log(`[MelhorEnvio] Criando envio no carrinho com serviceId: ${serviceId}`);
+          const shipmentId = await createShipmentInCart(orderWithItems, serviceId);
           console.log('[MelhorEnvio] Envio criado com sucesso', { shipmentId });
 
           await updateOrderByExternalReference(existingOrder.external_reference, {
@@ -322,6 +375,8 @@ async function processMercadoPagoWebhook(req) {
       }
     }
   }
+
+  processingWebhooks.delete(externalReference);
 
   console.log('[PaymentsService] Finalizando processamento de webhook', {
     orderId: updatedOrder.id,

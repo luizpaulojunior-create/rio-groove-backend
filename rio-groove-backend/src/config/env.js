@@ -28,8 +28,24 @@ const env = {
   melhorEnvioToken: process.env.MELHOR_ENVIO_TOKEN || '',
   melhorEnvioSandbox: process.env.MELHOR_ENVIO_SANDBOX === 'true',
   melhorEnvioOriginCep: process.env.MELHOR_ENVIO_ORIGIN_CEP || '22723019',
+  melhorEnvioClientId: process.env.MELHOR_ENVIO_CLIENT_ID || '',
+  melhorEnvioClientSecret: process.env.MELHOR_ENVIO_CLIENT_SECRET || '',
+  melhorEnvioRedirectUri: process.env.MELHOR_ENVIO_REDIRECT_URI || '',
   adminNotificationEmail: process.env.ADMIN_NOTIFICATION_EMAIL || 'riogroovemovimentos@gmail.com',
-  defaultCurrency: process.env.DEFAULT_CURRENCY || 'BRL'
+  defaultCurrency: process.env.DEFAULT_CURRENCY || 'BRL',
+  storeName: process.env.STORE_NAME || 'Rio Groove Store',
+  storePhone: process.env.STORE_PHONE || '21999999999',
+  storeEmail: process.env.STORE_EMAIL || 'contato@riogroovemovimentos.com.br',
+  storeDocument: process.env.STORE_DOCUMENT || '00000000000',
+  storeCompanyDocument: process.env.STORE_COMPANY_DOCUMENT || '00000000000000',
+  storeStateRegister: process.env.STORE_STATE_REGISTER || 'ISENTO',
+  storeAddress: process.env.STORE_ADDRESS || 'Endereço da Loja',
+  storeComplement: process.env.STORE_COMPLEMENT || '',
+  storeNumber: process.env.STORE_NUMBER || 'S/N',
+  storeDistrict: process.env.STORE_DISTRICT || 'Bairro',
+  storeCity: process.env.STORE_CITY || 'Rio de Janeiro',
+  storeStateAbbr: process.env.STORE_STATE_ABBR || 'RJ',
+  storePostalCode: process.env.STORE_POSTAL_CODE || process.env.MELHOR_ENVIO_ORIGIN_CEP || '22723019'
 };
 
 const required = [

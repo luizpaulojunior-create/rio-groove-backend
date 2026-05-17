@@ -1,4 +1,5 @@
 const env = require('../config/env');
+const { getValidToken } = require('./melhorEnvioAuth.service');
 
 const STABLE_PROVIDER_PATTERNS = [
   /correios/i,
@@ -53,13 +54,23 @@ function filterValidOptions(options) {
 }
 
 async function getShippingQuote({ cep, weight, height, width, length }) {
-  if (!env.melhorEnvioToken) {
-    throw new Error('MELHOR_ENVIO_TOKEN não configurado no backend.');
+  const token = await getValidToken();
+  const tokenPrefix = token ? token.substring(0, 15) + '...' : 'NENHUM';
+  const tokenOrigin = (token && token === env.melhorEnvioToken) ? 'env' : 'supabase';
+  
+  console.log(`[MelhorEnvio] getShippingQuote - Origem do token: ${tokenOrigin} | Prefixo: ${tokenPrefix}`);
+  console.log(`[MelhorEnvio] getShippingQuote - Header enviado: Authorization: Bearer ${tokenPrefix}`);
+
+  if (!token) {
+    throw new Error('Token do Melhor Envio não configurado no backend.');
   }
 
   const apiUrl = env.melhorEnvioSandbox
     ? 'https://sandbox.melhorenvio.com.br/api/v2/me/shipment/calculate'
-    : 'https://www.melhorenvio.com.br/api/v2/me/shipment/calculate';
+    : 'https://melhorenvio.com.br/api/v2/me/shipment/calculate';
+
+  console.log('[MelhorEnvio] Ambiente Efetivo Sandbox:', env.melhorEnvioSandbox);
+  console.log('[MelhorEnvio] URL Final de Cotação:', apiUrl);
 
   const requestBody = {
     from: {
@@ -101,7 +112,7 @@ async function getShippingQuote({ cep, weight, height, width, length }) {
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.melhorEnvioToken}`
+        Authorization: `Bearer ${token}`
       },
       body: JSON.stringify(requestBody),
       signal: controller.signal
@@ -194,14 +205,25 @@ async function ensureShippingRequestBody(order, shipmentId) {
 }
 
 function getMelhorEnvioBaseUrl() {
-  return env.melhorEnvioSandbox
+  const url = env.melhorEnvioSandbox
     ? 'https://sandbox.melhorenvio.com.br/api/v2/me/shipment'
-    : 'https://www.melhorenvio.com.br/api/v2/me/shipment';
+    : 'https://melhorenvio.com.br/api/v2/me/shipment';
+  
+  console.log('[MelhorEnvio] Base URL para operações:', url, '| Sandbox env:', env.melhorEnvioSandbox);
+  return url;
 }
 
 async function executeMelhorEnvioRequest(endpoint, body) {
-  if (!env.melhorEnvioToken) {
-    throw new Error('MELHOR_ENVIO_TOKEN não configurado no backend.');
+  const token = await getValidToken();
+  const tokenPrefix = token ? token.substring(0, 15) + '...' : 'NENHUM';
+  const tokenOrigin = (token && token === env.melhorEnvioToken) ? 'env' : 'supabase';
+
+  console.log(`[MelhorEnvio] executeMelhorEnvioRequest - Endpoint: ${endpoint}`);
+  console.log(`[MelhorEnvio] executeMelhorEnvioRequest - Origem do token: ${tokenOrigin} | Prefixo: ${tokenPrefix}`);
+  console.log(`[MelhorEnvio] executeMelhorEnvioRequest - Header enviado: Authorization: Bearer ${tokenPrefix}`);
+
+  if (!token) {
+    throw new Error('Token do Melhor Envio não configurado no backend.');
   }
 
   const controller = new AbortController();
@@ -216,7 +238,7 @@ async function executeMelhorEnvioRequest(endpoint, body) {
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.melhorEnvioToken}`
+        Authorization: `Bearer ${token}`
       },
       body: JSON.stringify(body || {}),
       signal: controller.signal
@@ -296,12 +318,19 @@ async function printShippingLabel(shipmentId) {
 
   try {
     const url = `${getMelhorEnvioBaseUrl()}/print`;
+    const token = await getValidToken();
+    const tokenPrefix = token ? token.substring(0, 15) + '...' : 'NENHUM';
+    const tokenOrigin = (token && token === env.melhorEnvioToken) ? 'env' : 'supabase';
+    
+    console.log(`[MelhorEnvio] printShippingLabel - Origem do token: ${tokenOrigin} | Prefixo: ${tokenPrefix}`);
+    console.log(`[MelhorEnvio] printShippingLabel - Header enviado: Authorization: Bearer ${tokenPrefix}`);
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         Accept: 'application/pdf, application/json',
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.melhorEnvioToken}`
+        Authorization: `Bearer ${token}`
       },
       body: JSON.stringify({ shipment_id: shipmentId }),
       signal: controller.signal
@@ -331,13 +360,23 @@ async function printShippingLabel(shipmentId) {
 }
 
 async function createShipmentInCart(order, serviceId) {
-  if (!env.melhorEnvioToken) {
-    throw new Error('MELHOR_ENVIO_TOKEN não configurado no backend.');
+  const token = await getValidToken();
+  const tokenPrefix = token ? token.substring(0, 15) + '...' : 'NENHUM';
+  const tokenOrigin = (token && token === env.melhorEnvioToken) ? 'env' : 'supabase';
+
+  console.log(`[MelhorEnvio] createShipmentInCart - Origem do token: ${tokenOrigin} | Prefixo: ${tokenPrefix}`);
+  console.log(`[MelhorEnvio] createShipmentInCart - Header enviado: Authorization: Bearer ${tokenPrefix}`);
+
+  if (!token) {
+    throw new Error('Token do Melhor Envio não configurado no backend.');
   }
 
   const apiUrl = env.melhorEnvioSandbox
     ? 'https://sandbox.melhorenvio.com.br/api/v2/me/cart'
-    : 'https://www.melhorenvio.com.br/api/v2/me/cart';
+    : 'https://melhorenvio.com.br/api/v2/me/cart';
+
+  console.log('[MelhorEnvio] Ambiente Efetivo Sandbox (Cart):', env.melhorEnvioSandbox);
+  console.log('[MelhorEnvio] URL Final de Cart:', apiUrl);
 
   let totalWeight = 0;
   let maxHeight = 0;
@@ -379,10 +418,36 @@ async function createShipmentInCart(order, serviceId) {
     }
   ];
 
+  const parsedServiceId = parseInt(String(serviceId).split('-')[0], 10);
+  
+  if (!parsedServiceId || isNaN(parsedServiceId)) {
+    throw new Error(`ID de serviço (serviceId) inválido: ${serviceId}`);
+  }
+
+  const insuranceValue = Math.max(
+    Number(order.total_amount || order.total || 1),
+    1
+  );
+  console.log('[MelhorEnvio] insurance_value final:', insuranceValue);
+
   const requestBody = {
-    service: parseInt(String(serviceId).split('-')[0], 10) || 1,
+    service: parsedServiceId,
     from: {
-      postal_code: env.melhorEnvioOriginCep || '22723019'
+      name: env.storeName,
+      phone: String(env.storePhone).replace(/\D/g, ''),
+      email: env.storeEmail,
+      document: String(env.storeDocument).replace(/\D/g, ''),
+      company_document: String(env.storeCompanyDocument).replace(/\D/g, ''),
+      state_register: env.storeStateRegister,
+      address: env.storeAddress,
+      complement: env.storeComplement,
+      number: env.storeNumber,
+      district: env.storeDistrict,
+      city: env.storeCity,
+      country_id: 'BR',
+      postal_code: String(env.storePostalCode).replace(/\D/g, ''),
+      note: '',
+      state_abbr: env.storeStateAbbr
     },
     to: {
       name: order.customer_name || 'Cliente',
@@ -400,13 +465,15 @@ async function createShipmentInCart(order, serviceId) {
     products,
     volumes,
     options: {
-      insurance_value: 0,
+      insurance_value: insuranceValue,
       receipt: false,
       own_hand: false,
       reverse_manage: false,
       non_commercial: true
     }
   };
+
+  console.log('[MelhorEnvio] Payload enviado para /me/cart:', JSON.stringify(requestBody, null, 2));
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 15000);
@@ -417,7 +484,7 @@ async function createShipmentInCart(order, serviceId) {
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.melhorEnvioToken}`
+        Authorization: `Bearer ${token}`
       },
       body: JSON.stringify(requestBody),
       signal: controller.signal
@@ -427,10 +494,12 @@ async function createShipmentInCart(order, serviceId) {
 
     if (!response.ok) {
       const text = await response.text();
+      console.error('[MelhorEnvio] Erro na API do carrinho:', text);
       throw new Error(`Melhor Envio retornou ${response.status}: ${text}`);
     }
 
     const data = await response.json();
+    console.log('[MelhorEnvio] Resposta de sucesso (Cart):', JSON.stringify(data, null, 2));
     return data.id;
   } catch (error) {
     clearTimeout(timeoutId);

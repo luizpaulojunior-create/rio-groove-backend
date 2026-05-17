@@ -5,6 +5,7 @@ const { testResend } = require('./services/notifications.service');
 console.log('[BOOT] Iniciando servidor...');
 console.log('[BOOT] Rotas de shipping carregadas');
 console.log('[BOOT] /api/shipping/quote registrado');
+console.log('[BOOT] OAuth Melhor Envio routes registradas');
 
 console.log('[ENV CONFIG]', {
   nodeEnv: env.nodeEnv,
