@@ -1,7 +1,14 @@
 const asyncHandler = require('../utils/asyncHandler');
 const { validateCheckoutPayload } = require('../utils/validation');
-const { createOrder, createOrderItems, getOrderWithItems } = require('../services/orders.service');
+const { createOrder, createOrderItems, getOrderWithItems, getOrders } = require('../services/orders.service');
 const { buildOrderNumber, buildExternalReference } = require('../utils/order');
+
+const getAllOrders = asyncHandler(async (req, res) => {
+  const limit = parseInt(req.query.limit, 10) || 50;
+  const offset = parseInt(req.query.offset, 10) || 0;
+  const result = await getOrders({ limit, offset });
+  return res.json(result);
+});
 
 const createManualOrder = asyncHandler(async (req, res) => {
   const validation = validateCheckoutPayload(req.body || {});
@@ -83,6 +90,7 @@ const getOrder = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  getAllOrders,
   createManualOrder,
   getOrder
 };

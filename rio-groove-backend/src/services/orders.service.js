@@ -80,6 +80,20 @@ async function getOrderByReference(reference) {
   return data;
 }
 
+async function getOrders(options = {}) {
+  const limit = options.limit || 50;
+  const offset = options.offset || 0;
+  
+  const { data, error, count } = await supabase
+    .from('orders')
+    .select('*', { count: 'exact' })
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (error) throw error;
+  return { orders: data || [], total: count || 0 };
+}
+
 async function getOrderItems(orderId) {
   const { data, error } = await supabase
     .from('order_items')
@@ -118,6 +132,7 @@ async function registerWebhookEvent({ provider, topic, action, resourceId, paylo
 }
 
 module.exports = {
+  getOrders,
   createOrder,
   createOrderItems,
   deleteOrder,

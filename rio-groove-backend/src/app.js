@@ -9,7 +9,7 @@ const app = express();
 app.use(cors({
   origin(origin, callback) {
     if (!origin) return callback(null, true);
-    if (origin === env.frontendUrl) return callback(null, true);
+    if (origin === env.frontendUrl || origin.startsWith('http://localhost:')) return callback(null, true);
     return callback(new Error('Origem não autorizada pelo CORS.'));
   },
   credentials: true

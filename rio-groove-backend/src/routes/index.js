@@ -6,6 +6,8 @@ const ordersRoutes = require('./orders.routes');
 const webhookRoutes = require('./webhooks.routes');
 const shippingRoutes = require('./shipping.routes');
 const authRoutes = require('./auth.routes');
+const collectionsRoutes = require('./collections.routes');
+const productsRoutes = require('./products.routes');
 
 const router = express.Router();
 
@@ -16,5 +18,7 @@ router.use(checkoutRoutes);
 router.use(shippingRoutes);
 router.use(ordersRoutes);
 router.use(webhookRoutes);
+router.use(collectionsRoutes);
+router.use(productsRoutes);
 
 module.exports = router;
