@@ -7,11 +7,12 @@ const errorHandler = require('./middlewares/error-handler');
 const app = express();
 
 app.use(cors({
-  origin(origin, callback) {
-    if (!origin) return callback(null, true);
-    if (origin === env.frontendUrl || origin.startsWith('http://localhost:')) return callback(null, true);
-    return callback(new Error('Origem não autorizada pelo CORS.'));
-  },
+  origin: [
+    'https://6152c968.rio-groove-storefront.pages.dev',
+    'https://rio-groove-storefront.pages.dev',
+    'https://riogroovemovimentos.com',
+    'http://localhost:5173'
+  ],
   credentials: true
 }));
 
