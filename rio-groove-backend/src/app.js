@@ -23,8 +23,8 @@ const corsOptions = {
       return callback(null, true);
     }
 
-    // Verifica se a origin está na lista exata ou é um subdomínio do pages.dev
-    const isAllowed = allowedOrigins.includes(origin) || /\.pages\.dev$/.test(origin);
+    // Verifica se a origin está na lista exata, é um subdomínio do pages.dev, ou qualquer localhost
+    const isAllowed = allowedOrigins.includes(origin) || /\.pages\.dev$/.test(origin) || /^http:\/\/localhost:\d+$/.test(origin);
     
     console.log(`[CORS] Request from Origin: ${origin} | Allowed: ${isAllowed}`);
     
