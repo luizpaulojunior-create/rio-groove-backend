@@ -25,6 +25,12 @@ console.log('[RESEND CONFIG]', {
   adminNotificationEmail: env.adminNotificationEmail // log only email, not token
 });
 
+console.log('[RESEND DEBUG]', {
+  hasKey: !!env.resendApiKey,
+  prefix: env.resendApiKey ? env.resendApiKey.substring(0, 5) : 'N/A',
+  length: env.resendApiKey ? env.resendApiKey.length : 0
+});
+
 // Teste automático na inicialização
 testResend().catch(console.error);
 

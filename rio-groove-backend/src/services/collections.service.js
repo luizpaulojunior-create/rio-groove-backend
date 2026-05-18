@@ -12,7 +12,7 @@ async function getCollections() {
 async function getCollectionBySlug(slug) {
   const { data, error } = await supabase
     .from('collections')
-    .select('*, products(*)')
+    .select('*, products(*, product_images(*))')
     .eq('slug', slug)
     .single();
   if (error) throw error;

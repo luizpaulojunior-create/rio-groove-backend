@@ -8,6 +8,7 @@ const shippingRoutes = require('./shipping.routes');
 const authRoutes = require('./auth.routes');
 const collectionsRoutes = require('./collections.routes');
 const productsRoutes = require('./products.routes');
+const uploadRoutes = require('./upload.routes');
 
 const router = express.Router();
 
@@ -20,5 +21,6 @@ router.use(ordersRoutes);
 router.use(webhookRoutes);
 router.use(collectionsRoutes);
 router.use(productsRoutes);
+router.use(uploadRoutes);
 
 module.exports = router;

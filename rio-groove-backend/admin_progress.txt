@@ -1,0 +1,6 @@
+- [x] Modify Database (collections table, products relation)
+- [x] Add Collections to Admin Panel (UI + routing)
+- [x] Add Collections API to Backend
+- [x] Connect Products to Collections in Backend/Admin
+- [x] Restore correct /admin routing paths
+- [x] Update Frontend to display Collections
