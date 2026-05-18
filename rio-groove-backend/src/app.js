@@ -6,14 +6,28 @@ const errorHandler = require('./middlewares/error-handler');
 
 const app = express();
 
-const allowedOrigins = [
-  'https://store.riogroovemovimentos.com.br', // Frontend Principal
-  'https://rio-groove-storefront-v2.pages.dev',
-  'https://rio-groove-storefront.pages.dev',
-  'https://riogroovemovimentos.com',
-  'http://localhost:5173',
-  'http://localhost:3000' // Testes locais
+const defaultOrigins = [
+  'https://riogroovemovimentos.com.br',
+  'https://store.riogroovemovimentos.com.br',
+  'https://admin.riogroovemovimentos.com.br'
 ];
+
+const envOrigins = [
+  process.env.FRONTEND_URL,
+  process.env.STORE_URL,
+  process.env.ADMIN_URL
+].filter(Boolean);
+
+const additionalOrigins = (process.env.ADDITIONAL_ALLOWED_ORIGINS || '')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+
+const allowedOrigins = [...new Set([
+  ...defaultOrigins,
+  ...envOrigins,
+  ...additionalOrigins
+])];
 
 const corsOptions = {
   origin: function (origin, callback) {
