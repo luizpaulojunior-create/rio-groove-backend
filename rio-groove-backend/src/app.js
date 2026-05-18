@@ -7,12 +7,12 @@ const errorHandler = require('./middlewares/error-handler');
 const app = express();
 
 const allowedOrigins = [
-  'https://store.riogroovemovimentos.com.br',
+  'https://store.riogroovemovimentos.com.br', // Frontend Principal
   'https://rio-groove-storefront-v2.pages.dev',
   'https://rio-groove-storefront.pages.dev',
   'https://riogroovemovimentos.com',
   'http://localhost:5173',
-  'http://localhost:3000'
+  'http://localhost:3000' // Testes locais
 ];
 
 const corsOptions = {
@@ -40,6 +40,7 @@ const corsOptions = {
   allowedHeaders: ['Content-Type', 'Authorization']
 };
 
+// Garante que o middleware CORS seja o primeiro a ser carregado antes de qualquer rota
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions)); // Garante resposta correta ao preflight OPTIONS
 
