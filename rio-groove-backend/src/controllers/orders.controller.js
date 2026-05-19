@@ -1,6 +1,6 @@
 const asyncHandler = require('../utils/asyncHandler');
 const { validateCheckoutPayload } = require('../utils/validation');
-const { createOrder, createOrderItems, getOrderWithItems, getOrders } = require('../services/orders.service');
+const { createOrder, createOrderItems, getOrderWithItems, getOrders, updateOrderById } = require('../services/orders.service');
 const { buildOrderNumber, buildExternalReference } = require('../utils/order');
 
 const getAllOrders = asyncHandler(async (req, res) => {
@@ -89,8 +89,15 @@ const getOrder = asyncHandler(async (req, res) => {
   return res.json({ order });
 });
 
+const updateOrderStatus = asyncHandler(async (req, res) => {
+  const { status } = req.body;
+  const order = await updateOrderById(req.params.id, { status });
+  return res.json(order);
+});
+
 module.exports = {
   getAllOrders,
   createManualOrder,
-  getOrder
+  getOrder,
+  updateOrderStatus
 };
