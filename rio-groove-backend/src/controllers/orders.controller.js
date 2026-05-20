@@ -90,10 +90,15 @@ const getOrder = asyncHandler(async (req, res) => {
 });
 
 const updateOrderStatus = asyncHandler(async (req, res) => {
-  const { status } = req.body;
-  const order = await updateOrderById(req.params.id, { status });
-  return res.json(order);
-});
+    const { status, tracking_code, tracking_url } = req.body;
+    const updates = {};
+    if (status !== undefined) updates.status = status;
+    if (tracking_code !== undefined) updates.tracking_code = tracking_code;
+    if (tracking_url !== undefined) updates.tracking_url = tracking_url;
+    
+    const order = await updateOrderById(req.params.id, updates);
+    return res.json(order);
+  });
 
 module.exports = {
   getAllOrders,

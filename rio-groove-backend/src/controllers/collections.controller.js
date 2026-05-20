@@ -2,7 +2,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const collectionsService = require('../services/collections.service');
 
 const getAllCollections = asyncHandler(async (req, res) => {
-  const collections = await collectionsService.getCollections();
+  const collections = await collectionsService.getCollections(req.query);
   return res.json(collections);
 });
 

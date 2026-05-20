@@ -1,10 +1,17 @@
 const supabase = require('../lib/supabase');
 
-async function getCollections() {
-  const { data, error } = await supabase
+async function getCollections(query = {}) {
+  let req = supabase
     .from('collections')
     .select('*, products(count)')
     .order('created_at', { ascending: false });
+
+  if (query.active !== undefined) {
+    const isActive = query.active === 'true' || query.active === true;
+    req = req.eq('active', isActive);
+  }
+
+  const { data, error } = await req;
   if (error) throw error;
   return data;
 }
@@ -16,6 +23,11 @@ async function getCollectionBySlug(slug) {
     .eq('slug', slug)
     .single();
   if (error) throw error;
+  
+  if (data && data.products) {
+    data.products = data.products.filter(p => p.active !== false);
+  }
+  
   return data;
 }
 

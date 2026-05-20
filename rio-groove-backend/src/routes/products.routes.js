@@ -13,8 +13,8 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 router.get('/api/products', getAllProducts);
 router.get('/api/products/:slug', getProduct);
-router.post('/api/products', upload.single('image'), createProduct);
-router.put('/api/products/:id', upload.single('image'), updateProduct);
+router.post('/api/products', upload.array('images'), createProduct);
+router.put('/api/products/:id', upload.array('images'), updateProduct);
 router.delete('/api/products/:id', deleteProduct);
 
 module.exports = router;

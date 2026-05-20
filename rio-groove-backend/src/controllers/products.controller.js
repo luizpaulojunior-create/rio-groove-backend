@@ -29,15 +29,39 @@ const createProduct = asyncHandler(async (req, res) => {
       productData.slug = productData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
     }
 
-    if (req.file) {
-      const publicUrl = await uploadService.uploadImage(req.file, 'product-images');
-      productData.image_url = publicUrl;
+    let images = [];
+    
+    if (productData.existing_images) {
+      if (Array.isArray(productData.existing_images)) {
+        images = productData.existing_images.map(img => typeof img === 'string' ? JSON.parse(img) : img);
+      } else {
+        images = [JSON.parse(productData.existing_images)];
+      }
     }
+
+    if (req.files && req.files.length > 0) {
+      for (const file of req.files) {
+        const publicUrl = await uploadService.uploadImage(file, 'product-images');
+        images.push({
+          image_url: publicUrl,
+          alt_text: productData.name || '',
+          color_variant: ''
+        });
+      }
+    }
+    
+    productData.images = images;
+    
+    if (images.length > 0 && !productData.image_url) {
+      productData.image_url = images[0].image_url;
+    }
+    
+    delete productData.existing_images;
 
     const product = await productsService.createProduct(productData);
     return res.status(201).json(product);
   } catch (error) {
-    return res.status(400).json({ error: error.message || 'Erro ao criar produto' });
+    return res.status(500).json({ error: error.message || 'Erro ao criar produto' });
   }
 });
 
@@ -55,15 +79,39 @@ const updateProduct = asyncHandler(async (req, res) => {
       productData.slug = productData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
     }
 
-    if (req.file) {
-      const publicUrl = await uploadService.uploadImage(req.file, 'product-images');
-      productData.image_url = publicUrl;
+    let images = [];
+    
+    if (productData.existing_images) {
+      if (Array.isArray(productData.existing_images)) {
+        images = productData.existing_images.map(img => typeof img === 'string' ? JSON.parse(img) : img);
+      } else {
+        images = [JSON.parse(productData.existing_images)];
+      }
     }
+
+    if (req.files && req.files.length > 0) {
+      for (const file of req.files) {
+        const publicUrl = await uploadService.uploadImage(file, 'product-images');
+        images.push({
+          image_url: publicUrl,
+          alt_text: productData.name || '',
+          color_variant: ''
+        });
+      }
+    }
+    
+    productData.images = images;
+    
+    if (images.length > 0) {
+      productData.image_url = images[0].image_url;
+    }
+    
+    delete productData.existing_images;
 
     const product = await productsService.updateProduct(id, productData);
     return res.json(product);
   } catch (error) {
-    return res.status(400).json({ error: error.message || 'Erro ao atualizar produto' });
+    return res.status(500).json({ error: error.message || 'Erro ao atualizar produto' });
   }
 });
 
