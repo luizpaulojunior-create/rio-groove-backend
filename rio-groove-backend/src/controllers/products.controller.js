@@ -9,7 +9,15 @@ const getAllProducts = asyncHandler(async (req, res) => {
 
 const getProduct = asyncHandler(async (req, res) => {
   const { slug } = req.params;
-  const product = await productsService.getProductBySlug(slug);
+  const isUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(slug);
+  
+  let product;
+  if (isUUID) {
+    product = await productsService.getProductById(slug);
+  } else {
+    product = await productsService.getProductBySlug(slug);
+  }
+
   if (!product) {
     return res.status(404).json({ message: 'Produto não encontrado' });
   }
@@ -41,8 +49,12 @@ const createProduct = asyncHandler(async (req, res) => {
       try { productData.colors = JSON.parse(productData.colors); } catch(e) { productData.colors = []; }
     }
 
+    if (productData.fabric_appearances && typeof productData.fabric_appearances === 'string') {
+      try { productData.fabric_appearances = JSON.parse(productData.fabric_appearances); } catch(e) { productData.fabric_appearances = []; }
+    }
+
     // Apenas campos que existem no DB
-    const allowedFields = ['name', 'slug', 'description', 'shortDescription', 'price', 'stock', 'category', 'active', 'collection_id', 'existing_images', 'collections', 'colors'];
+    const allowedFields = ['name', 'slug', 'description', 'shortDescription', 'price', 'stock', 'category', 'active', 'collection_id', 'existing_images', 'collections', 'colors', 'fabric_appearances'];
     Object.keys(productData).forEach(key => {
       if (!allowedFields.includes(key)) {
         delete productData[key];
@@ -115,8 +127,12 @@ const updateProduct = asyncHandler(async (req, res) => {
       try { productData.colors = JSON.parse(productData.colors); } catch(e) { productData.colors = []; }
     }
 
+    if (productData.fabric_appearances && typeof productData.fabric_appearances === 'string') {
+      try { productData.fabric_appearances = JSON.parse(productData.fabric_appearances); } catch(e) { productData.fabric_appearances = []; }
+    }
+
     // Apenas campos que existem no DB
-    const allowedFields = ['name', 'slug', 'description', 'shortDescription', 'price', 'stock', 'category', 'active', 'collection_id', 'existing_images', 'collections', 'colors'];
+    const allowedFields = ['name', 'slug', 'description', 'shortDescription', 'price', 'stock', 'category', 'active', 'collection_id', 'existing_images', 'collections', 'colors', 'fabric_appearances'];
     Object.keys(productData).forEach(key => {
       if (!allowedFields.includes(key)) {
         delete productData[key];

@@ -15,7 +15,7 @@ async function getProducts(query = {}) {
 
 async function getProductById(id) {
   const { data, error } = await supabase.from('products').select('*, collections(name), product_images(*)').eq('id', id).single();
-  if (error) throw error;
+  if (error && error.code !== 'PGRST116') throw error;
   return data;
 }
 
@@ -39,7 +39,8 @@ async function createProduct(productData) {
     active: productData.active,
     collection_id: productData.collection_id,
     collections: productData.collections,
-    colors: productData.colors || []
+    colors: productData.colors || [],
+    fabric_appearances: productData.fabric_appearances || []
   };
 
   console.log(cleanData);
@@ -80,7 +81,8 @@ async function updateProduct(id, updates) {
     active: updates.active,
     collection_id: updates.collection_id,
     collections: updates.collections,
-    colors: updates.colors
+    colors: updates.colors,
+    fabric_appearances: updates.fabric_appearances
   };
 
   Object.keys(cleanData).forEach(key => {
