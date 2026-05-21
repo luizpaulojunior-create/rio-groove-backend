@@ -26,8 +26,25 @@ async function getProductBySlug(slug) {
 }
 
 async function createProduct(productData) {
-  const { images, ...product } = productData;
-  const { data, error } = await supabase.from('products').insert(product).select('*').single();
+  const { images } = productData;
+
+  const cleanData = {
+    name: productData.name,
+    slug: productData.slug,
+    description: productData.description,
+    shortDescription: productData.shortDescription,
+    price: productData.price,
+    stock: productData.stock,
+    category: productData.category,
+    active: productData.active,
+    collection_id: productData.collection_id,
+    collections: productData.collections
+  };
+
+  console.log(cleanData);
+  console.log(Object.keys(cleanData));
+
+  const { data, error } = await supabase.from('products').insert(cleanData).select('*').single();
   if (error) {
     const errorObj = new Error(error.message);
     errorObj.response = { data: { error: error.message } };
@@ -49,8 +66,28 @@ async function createProduct(productData) {
 }
 
 async function updateProduct(id, updates) {
-  const { images, ...productUpdates } = updates;
-  const { data, error } = await supabase.from('products').update(productUpdates).eq('id', id).select('*').single();
+  const { images } = updates;
+
+  const cleanData = {
+    name: updates.name,
+    slug: updates.slug,
+    description: updates.description,
+    shortDescription: updates.shortDescription,
+    price: updates.price,
+    stock: updates.stock,
+    category: updates.category,
+    active: updates.active,
+    collection_id: updates.collection_id,
+    collections: updates.collections
+  };
+
+  Object.keys(cleanData).forEach(key => {
+    if (cleanData[key] === undefined) {
+      delete cleanData[key];
+    }
+  });
+
+  const { data, error } = await supabase.from('products').update(cleanData).eq('id', id).select('*').single();
   if (error) {
     const errorObj = new Error(error.message);
     errorObj.response = { data: { error: error.message } };

@@ -17,6 +17,11 @@ const getProduct = asyncHandler(async (req, res) => {
 });
 
 const createProduct = asyncHandler(async (req, res) => {
+  console.log('--- CREATE PRODUCT ---');
+  console.log('REQ.BODY:', req.body);
+  console.log('REQ.FILES:', req.files);
+  console.log('REQ.FILES LENGTH:', req.files?.length);
+
   try {
     let productData = { ...req.body };
     
@@ -24,9 +29,24 @@ const createProduct = asyncHandler(async (req, res) => {
     if (productData.price !== undefined && productData.price !== '') productData.price = parseFloat(productData.price);
     if (productData.stock !== undefined && productData.stock !== '') productData.stock = parseInt(productData.stock, 10);
     if (productData.active !== undefined) productData.active = productData.active === 'true';
+    if (productData.collections && typeof productData.collections === 'string') {
+      try { productData.collections = JSON.parse(productData.collections); } catch(e) { productData.collections = productData.collections.split(',').map(s=>s.trim()).filter(Boolean); }
+    }
 
     if (!productData.slug && productData.name) {
       productData.slug = productData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+    }
+
+    // Apenas campos que existem no DB
+    const allowedFields = ['name', 'slug', 'description', 'shortDescription', 'price', 'stock', 'category', 'active', 'collection_id', 'existing_images', 'collections'];
+    Object.keys(productData).forEach(key => {
+      if (!allowedFields.includes(key)) {
+        delete productData[key];
+      }
+    });
+
+    if (productData.collection_id === '') {
+      productData.collection_id = null;
     }
 
     let images = [];
@@ -67,6 +87,11 @@ const createProduct = asyncHandler(async (req, res) => {
 
 const updateProduct = asyncHandler(async (req, res) => {
   const { id } = req.params;
+  console.log('--- UPDATE PRODUCT ---');
+  console.log('REQ.BODY:', req.body);
+  console.log('REQ.FILES:', req.files);
+  console.log('REQ.FILES LENGTH:', req.files?.length);
+
   try {
     let productData = { ...req.body };
     
@@ -74,9 +99,24 @@ const updateProduct = asyncHandler(async (req, res) => {
     if (productData.price !== undefined && productData.price !== '') productData.price = parseFloat(productData.price);
     if (productData.stock !== undefined && productData.stock !== '') productData.stock = parseInt(productData.stock, 10);
     if (productData.active !== undefined) productData.active = productData.active === 'true';
+    if (productData.collections && typeof productData.collections === 'string') {
+      try { productData.collections = JSON.parse(productData.collections); } catch(e) { productData.collections = productData.collections.split(',').map(s=>s.trim()).filter(Boolean); }
+    }
 
     if (productData.name && !productData.slug) {
       productData.slug = productData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+    }
+
+    // Apenas campos que existem no DB
+    const allowedFields = ['name', 'slug', 'description', 'shortDescription', 'price', 'stock', 'category', 'active', 'collection_id', 'existing_images', 'collections'];
+    Object.keys(productData).forEach(key => {
+      if (!allowedFields.includes(key)) {
+        delete productData[key];
+      }
+    });
+
+    if (productData.collection_id === '') {
+      productData.collection_id = null;
     }
 
     let images = [];

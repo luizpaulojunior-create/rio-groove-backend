@@ -1,5 +1,19 @@
 const asyncHandler = require('../utils/asyncHandler');
-const { processMercadoPagoWebhook } = require('../services/payments.service');
+const { processMercadoPagoWebhook, processStripeWebhook } = require('../services/payments.service');
+
+const stripeWebhook = asyncHandler(async (req, res) => {
+  const startTime = Date.now();
+  console.log('[WebhookController] Requisição Stripe recebida no endpoint');
+
+  try {
+    const result = await processStripeWebhook(req);
+    const durationMs = Date.now() - startTime;
+    return res.status(200).json({ received: true, ...result });
+  } catch (error) {
+    console.error('[WebhookController] Erro no processamento Stripe:', error);
+    return res.status(400).send(`Webhook Error: ${error.message}`);
+  }
+});
 
 const mercadoPagoWebhook = asyncHandler(async (req, res) => {
   const startTime = Date.now();
@@ -42,5 +56,6 @@ const mercadoPagoWebhook = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
-  mercadoPagoWebhook
+  mercadoPagoWebhook,
+  stripeWebhook
 };

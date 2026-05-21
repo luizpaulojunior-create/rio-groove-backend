@@ -43,6 +43,8 @@ async function createCheckout({ payload }) {
   
   console.log('[Checkout] Criando pedido', orderId);
 
+  const paymentProvider = payload.provider === 'stripe' ? 'stripe' : 'mercado_pago';
+
   const order = await createOrder({
     order: {
       id: orderId,
@@ -50,7 +52,7 @@ async function createCheckout({ payload }) {
       external_reference: externalReference,
       status: 'awaiting_payment',
       payment_status: 'pending',
-      payment_provider: 'mercado_pago',
+      payment_provider: paymentProvider,
       currency: env.defaultCurrency,
       customer_name: payload.customer.name,
       customer_email: payload.customer.email,
@@ -110,6 +112,54 @@ async function createCheckout({ payload }) {
         unit_price: payload.shipping.price,
         currency_id: env.defaultCurrency
       });
+    }
+
+    if (paymentProvider === 'stripe') {
+      const stripe = require('stripe')(env.stripeSecretKey);
+      
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ['card'],
+        line_items: preferenceItems.map(item => ({
+          price_data: {
+            currency: env.defaultCurrency.toLowerCase(),
+            product_data: {
+              name: item.title,
+            },
+            unit_amount: Math.round(item.unit_price * 100),
+          },
+          quantity: item.quantity,
+        })),
+        mode: 'payment',
+        success_url: `${env.frontendUrl}/order-success?order_id=${orderId}`,
+        cancel_url: `${env.frontendUrl}/cart`,
+        client_reference_id: orderId,
+        metadata: {
+          order_id: orderId,
+          order_number: orderNumber,
+          external_reference: externalReference,
+          shipping_type: shippingType,
+          shipping_label: payload.shipping?.label || '',
+          shipping_service_id: payload.shipping?.id || ''
+        }
+      });
+
+      await updateOrderById(order.id, {
+        stripe_payment_intent_id: session.id
+      });
+
+      return {
+        orderId: order.id,
+        orderNumber,
+        externalReference,
+        checkoutUrl: session.url,
+        sessionId: session.id,
+        publicKey: env.stripePublicKey,
+        totals: {
+          subtotal: payload.subtotal,
+          shipping: payload.shipping.price,
+          total: payload.total
+        }
+      };
     }
 
     const notificationUrl = payload.notification_url || payload.notificationUrl || `${env.backendUrl}/api/webhooks/mercadopago`;
