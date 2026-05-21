@@ -38,7 +38,8 @@ async function createProduct(productData) {
     category: productData.category,
     active: productData.active,
     collection_id: productData.collection_id,
-    collections: productData.collections
+    collections: productData.collections,
+    colors: productData.colors || []
   };
 
   console.log(cleanData);
@@ -78,7 +79,8 @@ async function updateProduct(id, updates) {
     category: updates.category,
     active: updates.active,
     collection_id: updates.collection_id,
-    collections: updates.collections
+    collections: updates.collections,
+    colors: updates.colors
   };
 
   Object.keys(cleanData).forEach(key => {

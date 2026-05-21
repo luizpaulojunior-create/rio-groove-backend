@@ -37,8 +37,12 @@ const createProduct = asyncHandler(async (req, res) => {
       productData.slug = productData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
     }
 
+    if (productData.colors && typeof productData.colors === 'string') {
+      try { productData.colors = JSON.parse(productData.colors); } catch(e) { productData.colors = []; }
+    }
+
     // Apenas campos que existem no DB
-    const allowedFields = ['name', 'slug', 'description', 'shortDescription', 'price', 'stock', 'category', 'active', 'collection_id', 'existing_images', 'collections'];
+    const allowedFields = ['name', 'slug', 'description', 'shortDescription', 'price', 'stock', 'category', 'active', 'collection_id', 'existing_images', 'collections', 'colors'];
     Object.keys(productData).forEach(key => {
       if (!allowedFields.includes(key)) {
         delete productData[key];
@@ -107,8 +111,12 @@ const updateProduct = asyncHandler(async (req, res) => {
       productData.slug = productData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
     }
 
+    if (productData.colors && typeof productData.colors === 'string') {
+      try { productData.colors = JSON.parse(productData.colors); } catch(e) { productData.colors = []; }
+    }
+
     // Apenas campos que existem no DB
-    const allowedFields = ['name', 'slug', 'description', 'shortDescription', 'price', 'stock', 'category', 'active', 'collection_id', 'existing_images', 'collections'];
+    const allowedFields = ['name', 'slug', 'description', 'shortDescription', 'price', 'stock', 'category', 'active', 'collection_id', 'existing_images', 'collections', 'colors'];
     Object.keys(productData).forEach(key => {
       if (!allowedFields.includes(key)) {
         delete productData[key];
@@ -119,31 +127,33 @@ const updateProduct = asyncHandler(async (req, res) => {
       productData.collection_id = null;
     }
 
-    let images = [];
-    
-    if (productData.existing_images) {
-      if (Array.isArray(productData.existing_images)) {
-        images = productData.existing_images.map(img => typeof img === 'string' ? JSON.parse(img) : img);
-      } else {
-        images = [JSON.parse(productData.existing_images)];
+    if (req.body.images_updated === 'true') {
+      let images = [];
+      
+      if (productData.existing_images) {
+        if (Array.isArray(productData.existing_images)) {
+          images = productData.existing_images.map(img => typeof img === 'string' ? JSON.parse(img) : img);
+        } else {
+          images = [JSON.parse(productData.existing_images)];
+        }
       }
-    }
 
-    if (req.files && req.files.length > 0) {
-      for (const file of req.files) {
-        const publicUrl = await uploadService.uploadImage(file, 'product-images');
-        images.push({
-          image_url: publicUrl,
-          alt_text: productData.name || '',
-          color_variant: ''
-        });
+      if (req.files && req.files.length > 0) {
+        for (const file of req.files) {
+          const publicUrl = await uploadService.uploadImage(file, 'product-images');
+          images.push({
+            image_url: publicUrl,
+            alt_text: productData.name || '',
+            color_variant: ''
+          });
+        }
       }
-    }
-    
-    productData.images = images;
-    
-    if (images.length > 0) {
-      productData.image_url = images[0].image_url;
+      
+      productData.images = images;
+      
+      if (images.length > 0) {
+        productData.image_url = images[0].image_url;
+      }
     }
     
     delete productData.existing_images;
