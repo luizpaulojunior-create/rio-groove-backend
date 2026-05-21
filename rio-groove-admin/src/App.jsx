@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 import Orders from './pages/Orders';
 import OrderDetails from './pages/OrderDetails';
 import Products from './pages/Products';
+import ProductDetail from './pages/ProductDetail';
 import Collections from './pages/Collections';
 import CollectionDetails from './pages/CollectionDetails';
 
@@ -18,6 +19,7 @@ function App() {
           <Route path="orders" element={<Orders />} />
           <Route path="orders/:id" element={<OrderDetails />} />
           <Route path="products" element={<Products />} />
+          <Route path="products/:id" element={<ProductDetail />} />
           <Route path="collections" element={<Collections />} />
           <Route path="collections/:slug" element={<CollectionDetails />} />
         </Route>

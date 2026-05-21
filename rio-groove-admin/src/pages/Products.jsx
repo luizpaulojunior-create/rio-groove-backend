@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { getProducts, createProduct, updateProduct, deleteProduct } from '../services/products.service';
 import { getCollections } from '../services/collections.service';
 import { uploadImage } from '../services/upload.service';
@@ -26,12 +26,17 @@ const Products = () => {
     name: '',
     slug: '',
     description: '',
+    short_description: '',
     price: '',
+    promotional_price: '',
+    category: '',
     stock: '',
     image_url: '',
     images: [],
     collection_id: '',
-    active: true
+    active: true,
+    fabric_appearances: [],
+    tags: []
   });
 
   useEffect(() => {
@@ -88,12 +93,17 @@ const Products = () => {
       name: '',
       slug: '',
       description: '',
+      short_description: '',
       price: '',
+      promotional_price: '',
+      category: '',
       stock: '',
       image_url: '',
       images: [],
       collection_id: typeof initialCollectionId === 'string' ? initialCollectionId : '',
-      active: true
+      active: true,
+      fabric_appearances: [],
+      tags: []
     });
     setCurrentProduct(null);
     setIsModalOpen(true);
@@ -106,12 +116,17 @@ const Products = () => {
       name: product.name || '',
       slug: product.slug || '',
       description: product.description || '',
+      short_description: product.short_description || '',
       price: product.price || '',
+      promotional_price: product.promotional_price || '',
+      category: product.category || '',
       stock: product.stock !== undefined ? product.stock : '',
       image_url: product.image_url || '',
-      images: product.product_images || [],
+      images: product.product_images || product.images || [],
       collection_id: product.collection_id || '',
-      active: product.active !== false
+      active: product.active !== false,
+      fabric_appearances: product.fabric_appearances || product.fabricAppearances || [],
+      tags: product.tags ? (Array.isArray(product.tags) ? product.tags : product.tags.split(',').map(t=>t.trim())) : []
     });
     setIsModalOpen(true);
   };
@@ -191,6 +206,7 @@ const Products = () => {
       const dataToSave = {
         ...formData,
         price: parseFloat(formData.price),
+        promotional_price: formData.promotional_price ? parseFloat(formData.promotional_price) : null,
         stock: parseInt(formData.stock || 0, 10),
         collection_id: formData.collection_id || null,
         image_url: formData.images && formData.images.length > 0 ? formData.images[0].image_url : formData.image_url
@@ -292,7 +308,7 @@ const Products = () => {
                 filteredProducts.map((product) => (
                   <tr key={product.id} className="hover:bg-white/[0.02] transition-colors group">
                     <td className="py-5 px-8">
-                      <div className="flex items-center gap-4">
+                      <Link to={`/admin/products/${product.id}`} className="flex items-center gap-4 cursor-pointer">
                         <div className="w-12 h-12 rounded-lg bg-surface-primary border border-surface-border overflow-hidden flex-shrink-0 flex items-center justify-center">
                           {product.images?.length > 0 ? (
                             <img src={product.images[0].image_url} alt={product.name} className="w-full h-full object-cover" />
@@ -309,8 +325,15 @@ const Products = () => {
                             {product.name}
                           </p>
                           <p className="text-[12px] font-inter text-text-secondary mt-0.5">{product.slug}</p>
+                          {(product.fabric_appearances?.length > 0 || product.fabricAppearances?.length > 0) && (
+                            <div className="flex gap-1 mt-1.5 flex-wrap">
+                              {(product.fabric_appearances || product.fabricAppearances).map(fa => (
+                                <span key={fa} className="text-[9px] px-1.5 py-0.5 bg-white/[0.05] border border-white/10 text-text-secondary rounded uppercase">{fa}</span>
+                              ))}
+                            </div>
+                          )}
                         </div>
-                      </div>
+                      </Link>
                     </td>
                     <td className="py-5 px-8">
                       <span className="text-[13px] font-inter text-text-secondary">
@@ -415,7 +438,7 @@ const Products = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <div className="flex flex-col gap-2">
                   <label className="text-[12px] font-oswald font-medium tracking-[0.12em] text-text-secondary uppercase">
                     Preço (R$) *
@@ -426,6 +449,20 @@ const Products = () => {
                     required
                     value={formData.price}
                     onChange={(e) => setFormData({...formData, price: e.target.value})}
+                    className="bg-surface-primary border border-surface-border rounded-xl px-4 py-3 text-sm font-inter text-text-primary focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/20 transition-all"
+                    placeholder="0.00"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <label className="text-[12px] font-oswald font-medium tracking-[0.12em] text-text-secondary uppercase">
+                    Preço Promo
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.promotional_price}
+                    onChange={(e) => setFormData({...formData, promotional_price: e.target.value})}
                     className="bg-surface-primary border border-surface-border rounded-xl px-4 py-3 text-sm font-inter text-text-primary focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/20 transition-all"
                     placeholder="0.00"
                   />
@@ -459,20 +496,73 @@ const Products = () => {
                 </div>
               </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="flex flex-col gap-2">
+                  <label className="text-[12px] font-oswald font-medium tracking-[0.12em] text-text-secondary uppercase">
+                    Categoria
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.category}
+                    onChange={(e) => setFormData({...formData, category: e.target.value})}
+                    className="bg-surface-primary border border-surface-border rounded-xl px-4 py-3 text-sm font-inter text-text-primary focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/20 transition-all"
+                    placeholder="Ex: camisetas"
+                  />
+                </div>
+                
+                <div className="flex flex-col gap-2">
+                  <label className="text-[12px] font-oswald font-medium tracking-[0.12em] text-text-secondary uppercase">
+                    Coleção
+                  </label>
+                  <select
+                    value={formData.collection_id || ''}
+                    onChange={(e) => setFormData({...formData, collection_id: e.target.value})}
+                    className="bg-surface-primary border border-surface-border rounded-xl px-4 py-3 text-sm font-inter text-text-primary focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/20 transition-all appearance-none"
+                  >
+                    <option value="">Selecione uma coleção...</option>
+                    {collections.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
               <div className="flex flex-col gap-2">
                 <label className="text-[12px] font-oswald font-medium tracking-[0.12em] text-text-secondary uppercase">
-                  Coleção
+                  Acabamentos (Checks)
                 </label>
-                <select
-                  value={formData.collection_id || ''}
-                  onChange={(e) => setFormData({...formData, collection_id: e.target.value})}
-                  className="bg-surface-primary border border-surface-border rounded-xl px-4 py-3 text-sm font-inter text-text-primary focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/20 transition-all appearance-none"
-                >
-                  <option value="">Selecione uma coleção...</option>
-                  {collections.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
+                <div className="flex flex-wrap gap-4 bg-surface-primary border border-surface-border rounded-xl px-4 py-3">
+                  {['liso', 'estonado', 'offWhite'].map(check => (
+                    <label key={check} className="flex items-center gap-2 cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={formData.fabric_appearances.includes(check)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setFormData({...formData, fabric_appearances: [...formData.fabric_appearances, check]});
+                          } else {
+                            setFormData({...formData, fabric_appearances: formData.fabric_appearances.filter(c => c !== check)});
+                          }
+                        }}
+                        className="w-4 h-4 rounded border-surface-border bg-black/20 text-brand-DEFAULT focus:ring-brand-DEFAULT focus:ring-offset-surface-primary accent-brand-DEFAULT"
+                      />
+                      <span className="text-sm font-inter text-text-primary capitalize">{check}</span>
+                    </label>
                   ))}
-                </select>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="text-[12px] font-oswald font-medium tracking-[0.12em] text-text-secondary uppercase">
+                  Tags (separadas por vírgula)
+                </label>
+                <input
+                  type="text"
+                  value={formData.tags.join(', ')}
+                  onChange={(e) => setFormData({...formData, tags: e.target.value.split(',').map(t => t.trim()).filter(Boolean)})}
+                  className="bg-surface-primary border border-surface-border rounded-xl px-4 py-3 text-sm font-inter text-text-primary focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/20 transition-all"
+                  placeholder="ex: novidade, verao, promo"
+                />
               </div>
 
               <div className="flex flex-col gap-4 border border-surface-border rounded-2xl p-4 bg-white/[0.01]">
@@ -569,14 +659,27 @@ const Products = () => {
 
               <div className="flex flex-col gap-2">
                 <label className="text-[12px] font-oswald font-medium tracking-[0.12em] text-text-secondary uppercase">
-                  Descrição
+                  Descrição Curta
+                </label>
+                <textarea
+                  value={formData.short_description}
+                  onChange={(e) => setFormData({...formData, short_description: e.target.value})}
+                  rows={2}
+                  className="bg-surface-primary border border-surface-border rounded-xl px-4 py-3 text-sm font-inter text-text-primary focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/20 transition-all resize-none"
+                  placeholder="Descrição curta para listagens..."
+                ></textarea>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="text-[12px] font-oswald font-medium tracking-[0.12em] text-text-secondary uppercase">
+                  Descrição Completa
                 </label>
                 <textarea
                   value={formData.description}
                   onChange={(e) => setFormData({...formData, description: e.target.value})}
                   rows={4}
                   className="bg-surface-primary border border-surface-border rounded-xl px-4 py-3 text-sm font-inter text-text-primary focus:outline-none focus:border-white/20 focus:ring-1 focus:ring-white/20 transition-all resize-none"
-                  placeholder="Descrição do produto..."
+                  placeholder="Descrição completa do produto..."
                 ></textarea>
               </div>
             </div>
