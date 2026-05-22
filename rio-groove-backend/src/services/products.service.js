@@ -1,7 +1,7 @@
 const supabase = require('../lib/supabase');
 
 async function getProducts(query = {}) {
-  let req = supabase.from('products').select('*, collections(name), product_images(*)').order('created_at', { ascending: false });
+  let req = supabase.from('products').select('*, collections(name), product_images(*), product_variants(*)').order('created_at', { ascending: false });
   
   if (query.active !== undefined) {
     const isActive = query.active === 'true' || query.active === true;
@@ -14,19 +14,19 @@ async function getProducts(query = {}) {
 }
 
 async function getProductById(id) {
-  const { data, error } = await supabase.from('products').select('*, collections(name), product_images(*)').eq('id', id).single();
+  const { data, error } = await supabase.from('products').select('*, collections(name), product_images(*), product_variants(*)').eq('id', id).single();
   if (error && error.code !== 'PGRST116') throw error;
   return data;
 }
 
 async function getProductBySlug(slug) {
-  const { data, error } = await supabase.from('products').select('*, collections(name), product_images(*)').eq('slug', slug).single();
+  const { data, error } = await supabase.from('products').select('*, collections(name), product_images(*), product_variants(*)').eq('slug', slug).single();
   if (error && error.code !== 'PGRST116') throw error;
   return data;
 }
 
 async function createProduct(productData) {
-  const { images } = productData;
+  const { images, variants } = productData;
 
   const cleanData = {
     name: productData.name,
@@ -63,12 +63,25 @@ async function createProduct(productData) {
     }));
     await supabase.from('product_images').insert(imagesToInsert);
   }
+
+  if (variants && variants.length > 0) {
+    const variantsToInsert = variants.map(v => ({
+      product_id: data.id,
+      color: v.color,
+      size: v.size,
+      sku: v.sku,
+      stock: v.stock || 0,
+      price_override: v.price_override || null,
+      status: v.status || 'active'
+    }));
+    await supabase.from('product_variants').insert(variantsToInsert);
+  }
   
   return data;
 }
 
 async function updateProduct(id, updates) {
-  const { images } = updates;
+  const { images, variants } = updates;
 
   const cleanData = {
     name: updates.name,
@@ -109,6 +122,22 @@ async function updateProduct(id, updates) {
         sort_order: img.sort_order ?? index
       }));
       await supabase.from('product_images').insert(imagesToInsert);
+    }
+  }
+
+  if (variants !== undefined) {
+    await supabase.from('product_variants').delete().eq('product_id', id);
+    if (variants.length > 0) {
+      const variantsToInsert = variants.map(v => ({
+        product_id: id,
+        color: v.color,
+        size: v.size,
+        sku: v.sku,
+        stock: v.stock || 0,
+        price_override: v.price_override || null,
+        status: v.status || 'active'
+      }));
+      await supabase.from('product_variants').insert(variantsToInsert);
     }
   }
 

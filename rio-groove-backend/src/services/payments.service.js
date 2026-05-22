@@ -298,6 +298,54 @@ async function processMercadoPagoWebhook(req) {
     payment_payload: payment
   });
 
+  // Rollback de estoque em caso de cancelamento/rejeição
+  const isCancelled = ['cancelled', 'rejected', 'refunded', 'charged_back'].includes(payment.status);
+  const wasNotCancelled = !['cancelled', 'rejected', 'refunded', 'charged_back'].includes(existingOrder.mercado_pago_status);
+  
+  if (isCancelled && wasNotCancelled) {
+    console.log('[PaymentsService] Pagamento cancelado/rejeitado, restaurando estoque...');
+    const supabase = require('../lib/supabase');
+    const orderWithItems = await getOrderWithItems(existingOrder.external_reference);
+    
+    for (const item of orderWithItems.items) {
+      if (item.variant_id) {
+        try {
+          const { data: variant } = await supabase
+            .from('product_variants')
+            .select('available_stock, reserved_stock')
+            .eq('id', item.variant_id)
+            .single();
+
+          if (variant) {
+            const currentAvailable = variant.available_stock || 0;
+            const currentReserved = variant.reserved_stock || 0;
+            
+            await supabase
+              .from('product_variants')
+              .update({
+                available_stock: currentAvailable + item.quantity,
+                reserved_stock: Math.max(0, currentReserved - item.quantity)
+              })
+              .eq('id', item.variant_id);
+
+            await supabase
+              .from('inventory_movements')
+              .insert({
+                variant_id: item.variant_id,
+                type: 'cancellation',
+                quantity: item.quantity,
+                source: 'webhook_cancelled'
+              });
+              
+            console.log(`[PaymentsService] Estoque restaurado para variante ${item.variant_id}`);
+          }
+        } catch (e) {
+          console.error(`[PaymentsService] Erro ao restaurar estoque da variante ${item.variant_id}:`, e);
+        }
+      }
+    }
+  }
+
   let shipping_type = String(metadata.shipping_type || '').toLowerCase().trim();
   if (!shipping_type && updatedOrder && updatedOrder.shipping_method) {
     shipping_type = isPickupShippingMethod(updatedOrder.shipping_method) ? 'pickup' : 'shipping';
@@ -327,11 +375,63 @@ async function processMercadoPagoWebhook(req) {
         console.error('[AdminEmail] erro:', error);
       }
 
-      // Reduzir estoque
-      console.log('[PaymentsService] Reduzindo estoque dos produtos...');
+      // Efetivar venda no estoque
+      console.log('[PaymentsService] Atualizando estoque (venda aprovada)...');
       const supabase = require('../lib/supabase');
       for (const item of orderWithItems.items) {
-        if (item.product_slug) {
+        if (item.variant_id) {
+          try {
+            const { data: variant } = await supabase
+              .from('product_variants')
+              .select('reserved_stock, sold_stock, stock, product_id')
+              .eq('id', item.variant_id)
+              .single();
+              
+            if (variant) {
+              const currentReserved = variant.reserved_stock || 0;
+              const currentSold = variant.sold_stock || 0;
+              const currentStock = variant.stock || 0;
+              
+              await supabase
+                .from('product_variants')
+                .update({ 
+                  reserved_stock: Math.max(0, currentReserved - item.quantity),
+                  sold_stock: currentSold + item.quantity,
+                  stock: Math.max(0, currentStock - item.quantity) // legacy sync
+                })
+                .eq('id', item.variant_id);
+
+              await supabase
+                .from('inventory_movements')
+                .insert({
+                  variant_id: item.variant_id,
+                  type: 'purchase',
+                  quantity: item.quantity,
+                  source: 'webhook_approved'
+                });
+
+              console.log(`[PaymentsService] Estoque efetivado para variante ${item.variant_id}`);
+
+              if (variant.product_id) {
+                const { data: variants } = await supabase
+                  .from('product_variants')
+                  .select('stock')
+                  .eq('product_id', variant.product_id);
+                
+                if (variants) {
+                  const totalStock = variants.reduce((sum, v) => sum + (v.stock || 0), 0);
+                  await supabase
+                    .from('products')
+                    .update({ stock: totalStock })
+                    .eq('id', variant.product_id);
+                  console.log(`[PaymentsService] Estoque total recalculado para produto pai ${variant.product_id}: ${totalStock}`);
+                }
+              }
+            }
+          } catch (e) {
+            console.error(`[PaymentsService] Erro ao efetivar estoque da variante ${item.variant_id}:`, e);
+          }
+        } else if (item.product_slug) {
           try {
             const { data: product } = await supabase
               .from('products')

@@ -53,8 +53,16 @@ const createProduct = asyncHandler(async (req, res) => {
       try { productData.fabric_appearances = JSON.parse(productData.fabric_appearances); } catch(e) { productData.fabric_appearances = []; }
     }
 
+    if (productData.variants && typeof productData.variants === 'string') {
+      try { productData.variants = JSON.parse(productData.variants); } catch(e) { productData.variants = []; }
+    }
+
+    if (productData.variants && productData.variants.length > 0) {
+      productData.stock = productData.variants.reduce((acc, curr) => acc + (parseInt(curr.stock) || 0), 0);
+    }
+
     // Apenas campos que existem no DB
-    const allowedFields = ['name', 'slug', 'description', 'shortDescription', 'price', 'stock', 'category', 'active', 'collection_id', 'existing_images', 'collections', 'colors', 'fabric_appearances'];
+    const allowedFields = ['name', 'slug', 'description', 'shortDescription', 'price', 'stock', 'category', 'active', 'collection_id', 'existing_images', 'collections', 'colors', 'fabric_appearances', 'variants'];
     Object.keys(productData).forEach(key => {
       if (!allowedFields.includes(key)) {
         delete productData[key];
@@ -131,8 +139,16 @@ const updateProduct = asyncHandler(async (req, res) => {
       try { productData.fabric_appearances = JSON.parse(productData.fabric_appearances); } catch(e) { productData.fabric_appearances = []; }
     }
 
+    if (productData.variants && typeof productData.variants === 'string') {
+      try { productData.variants = JSON.parse(productData.variants); } catch(e) { productData.variants = []; }
+    }
+
+    if (productData.variants && productData.variants.length > 0) {
+      productData.stock = productData.variants.reduce((acc, curr) => acc + (parseInt(curr.stock) || 0), 0);
+    }
+
     // Apenas campos que existem no DB
-    const allowedFields = ['name', 'slug', 'description', 'shortDescription', 'price', 'stock', 'category', 'active', 'collection_id', 'existing_images', 'collections', 'colors', 'fabric_appearances'];
+    const allowedFields = ['name', 'slug', 'description', 'shortDescription', 'price', 'stock', 'category', 'active', 'collection_id', 'existing_images', 'collections', 'colors', 'fabric_appearances', 'variants'];
     Object.keys(productData).forEach(key => {
       if (!allowedFields.includes(key)) {
         delete productData[key];

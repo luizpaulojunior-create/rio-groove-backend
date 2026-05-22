@@ -24,16 +24,29 @@ async function createCheckout({ payload }) {
 
   console.log('[Checkout] Validando estoque...');
   for (const item of payload.items) {
-    if (item.slug) {
+    if (item.variant_id) {
+      const { data: variant } = await supabase
+        .from('product_variants')
+        .select('available_stock, stock, product_id, products(name)')
+        .eq('id', item.variant_id)
+        .single();
+        
+      if (variant) {
+        const checkStock = variant.available_stock !== undefined && variant.available_stock !== null ? variant.available_stock : variant.stock;
+        if (typeof checkStock === 'number' && checkStock < item.quantity) {
+          throw new Error(`Estoque insuficiente para a variação da peça "${item.name}". Disponível: ${checkStock}.`);
+        }
+      }
+    } else if (item.slug) {
       const { data: product } = await supabase
         .from('products')
         .select('stock, name')
         .eq('slug', item.slug)
         .single();
-        
+
       if (product && typeof product.stock === 'number') {
         if (product.stock < item.quantity) {
-          throw new Error(`Estoque insuficiente para a peça "${item.productName}". Disponível: ${product.stock}.`);
+          throw new Error(`Estoque insuficiente para a peça "${item.name}". Disponível: ${product.stock}.`);
         }
       }
     }
@@ -81,19 +94,69 @@ async function createCheckout({ payload }) {
 
   console.log('[Checkout] Pedido salvo no banco:', order?.id);
 
+  // Reservar estoque
+  console.log('[Checkout] Reservando estoque...');
+  for (const item of payload.items) {
+    if (item.variant_id) {
+      const { data: variant } = await supabase
+        .from('product_variants')
+        .select('available_stock, reserved_stock, stock')
+        .eq('id', item.variant_id)
+        .single();
+
+      if (variant) {
+        const currentAvailable = variant.available_stock !== undefined && variant.available_stock !== null ? variant.available_stock : variant.stock;
+        const currentReserved = variant.reserved_stock || 0;
+        
+        await supabase
+          .from('product_variants')
+          .update({
+            available_stock: currentAvailable - item.quantity,
+            reserved_stock: currentReserved + item.quantity
+          })
+          .eq('id', item.variant_id);
+
+        await supabase
+          .from('inventory_movements')
+          .insert({
+            variant_id: item.variant_id,
+            type: 'reservation',
+            quantity: item.quantity,
+            source: 'checkout'
+          });
+      }
+    } else if (item.slug) {
+      // Logic to deduct generic product stock if variant not used (legacy support)
+      const { data: product } = await supabase
+        .from('products')
+        .select('stock')
+        .eq('slug', item.slug)
+        .single();
+
+      if (product && typeof product.stock === 'number') {
+        await supabase
+          .from('products')
+          .update({ stock: product.stock - item.quantity })
+          .eq('slug', item.slug);
+      }
+    }
+  }
+
   try {
     await createOrderItems(
       payload.items.map((item) => ({
         order_id: order.id,
-        product_name: item.productName,
+        product_name: item.name || item.productName,
         product_slug: item.slug || null,
-        image_url: item.imageUrl || null,
-        color: item.color,
-        size: item.size,
+        variant_id: item.variant_id || null,
+        sku: item.sku || null,
+        image_url: item.image || item.imageUrl || null,
+        color: item.color || null,
+        size: item.size || null,
         quantity: item.quantity,
-        unit_price: item.unitPrice,
-        line_total: item.lineTotal,
-        metadata_json: item.raw
+        unit_price: item.unit_price || item.unitPrice,
+        line_total: item.lineTotal || item.line_total || ((item.quantity || 1) * (item.unit_price || item.unitPrice || 0)),
+        metadata_json: item.raw || item
       }))
     );
 
@@ -249,6 +312,53 @@ async function createCheckout({ payload }) {
     };
   } catch (error) {
     console.error('[Checkout] Erro capturado:', error);
+    
+    // Rollback stock reservation on failure
+    for (const item of payload.items) {
+      if (item.variant_id) {
+        const { data: variant } = await supabase
+          .from('product_variants')
+          .select('available_stock, reserved_stock, stock')
+          .eq('id', item.variant_id)
+          .single();
+
+        if (variant) {
+          const currentAvailable = variant.available_stock !== undefined && variant.available_stock !== null ? variant.available_stock : variant.stock;
+          const currentReserved = variant.reserved_stock || 0;
+          
+          await supabase
+            .from('product_variants')
+            .update({
+              available_stock: currentAvailable + item.quantity,
+              reserved_stock: Math.max(0, currentReserved - item.quantity)
+            })
+            .eq('id', item.variant_id);
+            
+          await supabase
+            .from('inventory_movements')
+            .insert({
+              variant_id: item.variant_id,
+              type: 'cancellation',
+              quantity: item.quantity,
+              source: 'checkout_error'
+            });
+        }
+      } else if (item.slug) {
+        const { data: product } = await supabase
+          .from('products')
+          .select('stock')
+          .eq('slug', item.slug)
+          .single();
+
+        if (product && typeof product.stock === 'number') {
+          await supabase
+            .from('products')
+            .update({ stock: product.stock + item.quantity })
+            .eq('slug', item.slug);
+        }
+      }
+    }
+
     await deleteOrder(order.id);
     throw error;
   }
