@@ -1,7 +1,9 @@
 const supabase = require('../lib/supabase');
 const crypto = require('crypto');
 
-const uploadImage = async (file, bucket, folderPath = '') => {
+const { STORAGE_BUCKET } = require('../config/storage');
+
+const uploadImage = async (file, bucket = STORAGE_BUCKET, folderPath = '') => {
   console.log('FILE:', file);
   console.log('FILE NAME:', file.originalname);
   console.log('MIME:', file.mimetype);

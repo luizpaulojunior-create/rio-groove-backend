@@ -1,6 +1,7 @@
 const asyncHandler = require('../utils/asyncHandler');
 const productsService = require('../services/products.service');
 const uploadService = require('../services/upload.service');
+const { STORAGE_BUCKET, STORAGE_PATHS } = require('../config/storage');
 
 const getAllProducts = asyncHandler(async (req, res) => {
   const products = await productsService.getProducts(req.query);
@@ -85,7 +86,7 @@ const createProduct = asyncHandler(async (req, res) => {
 
     if (req.files && req.files.length > 0) {
       for (const file of req.files) {
-        const publicUrl = await uploadService.uploadImage(file, 'product-images');
+        const publicUrl = await uploadService.uploadImage(file, STORAGE_BUCKET, STORAGE_PATHS.PRODUCTS);
         images.push({
           image_url: publicUrl,
           alt_text: productData.name || '',
@@ -172,7 +173,7 @@ const updateProduct = asyncHandler(async (req, res) => {
 
       if (req.files && req.files.length > 0) {
         for (const file of req.files) {
-          const publicUrl = await uploadService.uploadImage(file, 'product-images');
+          const publicUrl = await uploadService.uploadImage(file, STORAGE_BUCKET, STORAGE_PATHS.PRODUCTS);
           images.push({
             image_url: publicUrl,
             alt_text: productData.name || '',
