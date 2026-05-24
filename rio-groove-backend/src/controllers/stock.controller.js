@@ -22,10 +22,19 @@ const createStockItem = asyncHandler(async (req, res) => {
 
 const updateStockItem = asyncHandler(async (req, res) => {
   try {
+    console.log('[DEBUG BACKEND] req.params:', req.params);
+    console.log('[DEBUG BACKEND] req.body antes do processamento:', req.body);
     const item = await stockService.updateStockItem(req.params.id, req.body);
+    console.log('[DEBUG BACKEND] payload final processado:', item);
     return res.json(item);
   } catch (error) {
-    return res.status(400).json({ error: error.message || 'Erro ao atualizar lote de estoque' });
+    console.error('[DEBUG BACKEND] Mensagem real do erro:', error.message);
+    console.error('[DEBUG BACKEND] Stack real do erro:', error.stack);
+    return res.status(400).json({ 
+      error: error.message || 'Erro ao atualizar lote de estoque', 
+      stack: error.stack,
+      details: error 
+    });
   }
 });
 
@@ -44,11 +53,21 @@ const adjustStock = asyncHandler(async (req, res) => {
   }
 });
 
+const seedStockItems = asyncHandler(async (req, res) => {
+  try {
+    const result = await stockService.seedStockItems();
+    return res.json(result);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Erro ao gerar estoque inicial' });
+  }
+});
+
 module.exports = {
   getStock,
   getStockItem,
   createStockItem,
   updateStockItem,
   deleteStockItem,
-  adjustStock
+  adjustStock,
+  seedStockItems
 };
