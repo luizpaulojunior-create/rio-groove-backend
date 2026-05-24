@@ -4,7 +4,7 @@ const env = require('../config/env');
 const supabase = createClient(env.supabaseUrl, env.supabaseServiceRoleKey);
 
 const getStock = async () => {
-  const { data, error } = await supabase.from('stock_items').select('*, stock_images(*)').order('created_at', { ascending: false });
+  const { data, error } = await supabase.from('stock_items').select('*').order('created_at', { ascending: false });
   if (error) {
     if (error.code === 'PGRST205') {
        return []; // Tabela não existe ainda
@@ -15,7 +15,7 @@ const getStock = async () => {
 };
 
 const getStockItem = async (id) => {
-  const { data, error } = await supabase.from('stock_items').select('*, stock_images(*)').eq('id', id).single();
+  const { data, error } = await supabase.from('stock_items').select('*').eq('id', id).single();
   if (error) throw error;
   return data;
 };
