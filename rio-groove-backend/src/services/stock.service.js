@@ -55,6 +55,9 @@ const updateStockItem = async (id, stockData) => {
     payload.is_active = payload.active;
     delete payload.active;
   }
+  delete payload.images;
+  delete payload.stock_images;
+  
   const { data, error } = await supabase.from('stock_items').update(payload).eq('id', id).select('*').single();
   if (error) throw error;
   return data;
