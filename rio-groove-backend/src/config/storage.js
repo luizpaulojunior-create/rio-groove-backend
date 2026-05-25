@@ -1,3 +1,7 @@
+/**
+ * Bucket oficial para novos uploads.
+ * Legado: imagens antigas podem estar no bucket `products/` — preservar URLs existentes.
+ */
 const STORAGE_BUCKET = 'product-images';
 
 const STORAGE_PATHS = {

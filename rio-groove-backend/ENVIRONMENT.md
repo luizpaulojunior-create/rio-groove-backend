@@ -115,4 +115,13 @@ Configuração: `render.yaml` (`buildCommand: npm install`, `startCommand: npm s
 | **admin** | `VITE_API_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` |
 | **storefront** | `VITE_API_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_GA_*`, `VITE_META_*` |
 
-Todos compartilham o **mesmo projeto Supabase** (`cvpobvvkhcqasumhfwps`).
+Todos compartilham o **mesmo projeto Supabase**.
+
+## Storage (Fase 3 — documentação, sem migração)
+
+| Bucket | Uso |
+|--------|-----|
+| `product-images` | **Oficial** — novos uploads via backend e admin CMS (`src/config/storage.js`) |
+| `products` | **Legado** — URLs antigas em `product_images`; preservar até migração futura |
+
+Não alterar URLs existentes nesta fase.

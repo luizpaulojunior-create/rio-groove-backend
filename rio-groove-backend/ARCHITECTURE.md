@@ -109,7 +109,7 @@ Ver [API_CONTRACTS.md](./API_CONTRACTS.md).
 | Item | Local | Notas |
 |------|-------|-------|
 | Cliente Supabase duplicado | `src/services/stock.service.js` | Deveria usar `lib/supabase.js` |
-| Rota debug | `GET /debug/test-melhor-envio-cart` | Temporária em `shipping.routes.js` |
+| Rota debug `/debug/test-melhor-envio-cart` | **Removida Fase 3** |
 | Scripts one-off | `migrate.js`, `import_images.js`, `create_buckets.js`, etc. | Fora do runtime |
 | Schema parcial | `supabase.sql` | Não cobre `products`, `stock_items`, CMS |
 | Bucket mismatch | `create_buckets.js` vs `config/storage.js` | Buckets `products` vs `product-images` |

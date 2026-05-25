@@ -107,8 +107,7 @@ Produtos usam upload embutido em `POST/PUT /api/products`.
 | POST | `/api/shipping/label` | ✅ | `generateLabel` → `/shipping/label/:orderId` ❌ path diferente |
 | GET | `/api/shipping/tracking/:id` | ✅ | `trackShipment` → `/shipping/track/:code` ❌ path diferente |
 | GET | `/auth/melhor-envio/login` | ✅ | `getOAuthUrl` → `/shipping/oauth-url` ❌ |
-| GET | `/auth/melhor-envio/callback` | ✅ | `handleOAuthCallback` → `/shipping/oauth-callback` ❌ |
-| GET | `/debug/test-melhor-envio-cart` | ⚠️ debug | — |
+| GET | `/auth/melhor-envio/callback` | ✅ | OAuth callback Melhor Envio |
 
 ### Rotas chamadas pelo admin mas **NÃO implementadas** no backend
 
