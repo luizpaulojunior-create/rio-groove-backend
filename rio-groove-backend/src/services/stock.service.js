@@ -6,14 +6,15 @@ const {
   normalizeCategory,
   GENDER_NEUTRAL,
   FABRIC_NEUTRAL,
-  categoryUsesFabric
+  categoryUsesFabric,
+  classifyLegacyInvalidStockItem
 } = require('../config/inventory');
 
 const getStock = async () => {
   const { data, error } = await supabase.from('stock_items').select('*').order('created_at', { ascending: false });
   if (error) {
     if (error.code === 'PGRST205') {
-       return []; // Tabela não existe ainda
+       return [];
     }
     throw error;
   }
@@ -28,7 +29,7 @@ const getStockItem = async (id) => {
 
 const createStockItem = async (stockData) => {
   const payload = {
-    category: stockData.category,
+    category: normalizeCategory(stockData.category),
     gender: Object.prototype.hasOwnProperty.call(stockData, 'gender')
       ? stockData.gender
       : 'Masculino',
@@ -51,6 +52,9 @@ const createStockItem = async (stockData) => {
 
 const updateStockItem = async (id, stockData) => {
   const payload = { ...stockData };
+  if (payload.category) {
+    payload.category = normalizeCategory(payload.category);
+  }
   if (payload.stock !== undefined) {
     payload.quantity = payload.stock;
     delete payload.stock;
@@ -88,6 +92,40 @@ const adjustStock = async (id, quantity, reason) => {
   return data;
 };
 
+const cleanupLegacyInvalidStockItems = async () => {
+  const { data: rows, error: fetchErr } = await supabase
+    .from('stock_items')
+    .select('id, category, sku, model');
+
+  if (fetchErr) {
+    if (fetchErr.code === 'PGRST205') {
+      return { removed: { accessory: 0, invalid_bone: 0, invalid_mug: 0, total: 0 } };
+    }
+    throw fetchErr;
+  }
+
+  const removed = { accessory: 0, invalid_bone: 0, invalid_mug: 0, total: 0 };
+  const idsToDelete = [];
+
+  for (const row of rows || []) {
+    const kind = classifyLegacyInvalidStockItem(row);
+    if (kind) {
+      idsToDelete.push(row.id);
+      removed[kind] += 1;
+      removed.total += 1;
+    }
+  }
+
+  const BATCH_SIZE = 200;
+  for (let i = 0; i < idsToDelete.length; i += BATCH_SIZE) {
+    const batch = idsToDelete.slice(i, i + BATCH_SIZE);
+    const { error: deleteErr } = await supabase.from('stock_items').delete().in('id', batch);
+    if (deleteErr) throw deleteErr;
+  }
+
+  return { removed };
+};
+
 const seedStockItems = async () => {
   const { error: migrateErr } = await supabase
     .from('stock_items')
@@ -97,6 +135,8 @@ const seedStockItems = async () => {
   if (migrateErr && migrateErr.code !== 'PGRST205') {
     throw migrateErr;
   }
+
+  const cleanup = await cleanupLegacyInvalidStockItems();
 
   const itemsToInsert = buildOperationalStockItems(SEED_DEFAULTS);
 
@@ -156,10 +196,15 @@ const seedStockItems = async () => {
     message = `Grade operacional completa: todos os ${itemsToInsert.length} itens já existiam.`;
   }
 
+  if (cleanup.removed.total > 0) {
+    message = `${cleanup.removed.total} itens legados removidos. ${message}`;
+  }
+
   return {
     total_expected: itemsToInsert.length,
     total_created: newItems.length,
     already_existed: itemsToInsert.length - newItems.length,
+    removed: cleanup.removed,
     sample_skus: itemsToInsert.slice(0, 8).map((item) => item.sku),
     message
   };

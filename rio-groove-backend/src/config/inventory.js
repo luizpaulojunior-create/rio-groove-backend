@@ -39,6 +39,8 @@ const MODELS_BY_GENDER = {
 const MODELS_REGATA = ['Regular', 'Machão'];
 const MODELS_BONE = ['Trucker', 'Dad Hat', 'Snapback'];
 const MODEL_CANECA = '330ml';
+const MATERIAL_CANECA = 'Porcelana';
+const VALID_CANECA_SKU = 'MUG-330-WHT-U';
 
 const FABRICS = ['Lisa', 'Estonada'];
 
@@ -75,14 +77,6 @@ const RELAXED_FIT_PREFIX_BY_GENDER = {
   Feminino: 'RLF'
 };
 
-const CATEGORY_PREFIXES = {
-  Camisa: 'CAM',
-  Regata: 'RGT',
-  'Boné': 'CAP',
-  Caneca: 'MUG',
-  'Acessório': 'ACC'
-};
-
 const UNIT_COST_BY_CATEGORY = {
   Camisa: 42,
   Regata: 25,
@@ -97,39 +91,62 @@ const SEED_DEFAULTS = {
   is_active: true
 };
 
+const SEED_CATEGORIES = ['Camisa', 'Regata', 'Boné', 'Caneca'];
+
+function normalizeCategory(category) {
+  if (category === 'Camiseta') return 'Camisa';
+  return category;
+}
+
 function categoryUsesGender(category) {
-  return category === 'Camisa' || category === 'Acessório';
+  return normalizeCategory(category) === 'Camisa';
 }
 
 function categoryUsesFabric(category) {
-  return category === 'Camisa' || category === 'Regata' || category === 'Acessório';
+  const cat = normalizeCategory(category);
+  return cat === 'Camisa' || cat === 'Regata';
+}
+
+function categoryUsesMaterial(category) {
+  return normalizeCategory(category) === 'Caneca';
+}
+
+function categoryHasSeedGrade(category) {
+  return SEED_CATEGORIES.includes(normalizeCategory(category));
+}
+
+function categoryAllowsManualCreate(category) {
+  return normalizeCategory(category) !== 'Acessório';
 }
 
 function getModelsForCategory(category, gender) {
-  if (category === 'Camisa' || category === 'Acessório') {
+  const cat = normalizeCategory(category);
+  if (cat === 'Camisa') {
     return MODELS_BY_GENDER[gender] || [];
   }
-  if (category === 'Regata') return MODELS_REGATA;
-  if (category === 'Boné') return MODELS_BONE;
-  if (category === 'Caneca') return [MODEL_CANECA];
+  if (cat === 'Regata') return MODELS_REGATA;
+  if (cat === 'Boné') return MODELS_BONE;
+  if (cat === 'Caneca') return [MODEL_CANECA];
+  if (cat === 'Acessório') return [];
+  return [];
+}
+
+function getMaterialsForCategory(category) {
+  if (normalizeCategory(category) === 'Caneca') return [MATERIAL_CANECA];
   return [];
 }
 
 function getColorsForCategory(category) {
-  if (category === 'Caneca') {
+  if (normalizeCategory(category) === 'Caneca') {
     return COLORS.filter((c) => c.key === 'wht');
   }
   return COLORS;
 }
 
 function getSizesForCategory(category) {
-  if (category === 'Camisa' || category === 'Regata') return APPAREL_SIZES;
+  const cat = normalizeCategory(category);
+  if (cat === 'Camisa' || cat === 'Regata') return APPAREL_SIZES;
   return [ONE_SIZE];
-}
-
-function normalizeCategory(category) {
-  if (category === 'Camiseta') return 'Camisa';
-  return category;
 }
 
 function getModelPrefix(model, gender) {
@@ -143,7 +160,7 @@ function generateSKU(category, model, colorKey, size, fabric, gender) {
   const cat = normalizeCategory(category);
 
   if (cat === 'Caneca') {
-    return `MUG-330-${String(colorKey || 'wht').toUpperCase()}-U`;
+    return VALID_CANECA_SKU;
   }
 
   if (cat === 'Boné') {
@@ -152,13 +169,7 @@ function generateSKU(category, model, colorKey, size, fabric, gender) {
   }
 
   if (cat === 'Acessório') {
-    const parts = ['ACC'];
-    const modelPrefix = getModelPrefix(model, gender);
-    if (modelPrefix) parts.push(modelPrefix);
-    if (colorKey) parts.push(String(colorKey).toUpperCase());
-    parts.push('U');
-    if (fabric) parts.push(fabric === 'Estonada' ? 'EST' : 'LS');
-    return parts.join('-');
+    return null;
   }
 
   const parts = [];
@@ -166,8 +177,6 @@ function generateSKU(category, model, colorKey, size, fabric, gender) {
 
   if (modelPrefix) {
     parts.push(modelPrefix);
-  } else if (CATEGORY_PREFIXES[cat]) {
-    parts.push(CATEGORY_PREFIXES[cat]);
   } else if (model) {
     parts.push(model.substring(0, 3).toUpperCase());
   } else {
@@ -194,7 +203,7 @@ function stockDedupKey({ category, gender, model, fabric, color_key, size }) {
   const cat = normalizeCategory(category);
 
   if (cat === 'Caneca') {
-    return `${cat}|${model}|${color_key}|${size}`;
+    return `${cat}|${MODEL_CANECA}|${color_key}|${size}`;
   }
   if (cat === 'Boné') {
     return `${cat}|${model}|${color_key}|${size}`;
@@ -202,10 +211,33 @@ function stockDedupKey({ category, gender, model, fabric, color_key, size }) {
   if (cat === 'Regata') {
     return `${cat}|${model}|${fabric}|${color_key}|${size}`;
   }
-  if (cat === 'Camisa' || cat === 'Acessório') {
+  if (cat === 'Camisa') {
     return `${cat}|${gender}|${model}|${fabric}|${color_key}|${size}`;
   }
   return `${cat}|${gender}|${model}|${fabric}|${color_key}|${size}`;
+}
+
+function classifyLegacyInvalidStockItem(row) {
+  const cat = normalizeCategory(row.category);
+  const sku = String(row.sku || '');
+
+  if (cat === 'Acessório' || sku.startsWith('ACC-')) {
+    return 'accessory';
+  }
+  if (cat === 'Boné' && (!MODELS_BONE.includes(row.model) || sku.startsWith('CAP-'))) {
+    return 'invalid_bone';
+  }
+  if (sku.startsWith('MUG-') && sku !== VALID_CANECA_SKU) {
+    return 'invalid_mug';
+  }
+  if (cat === 'Caneca' && sku !== VALID_CANECA_SKU) {
+    return 'invalid_mug';
+  }
+  return null;
+}
+
+function isLegacyInvalidStockItem(row) {
+  return classifyLegacyInvalidStockItem(row) !== null;
 }
 
 function buildOperationalStockItems(defaults = SEED_DEFAULTS) {
@@ -218,11 +250,10 @@ function buildOperationalStockItems(defaults = SEED_DEFAULTS) {
       quantity: defaults.quantity,
       min_stock: defaults.min_stock,
       is_active: defaults.is_active,
-      unit_cost: UNIT_COST_BY_CATEGORY[item.category] ?? UNIT_COST_BY_CATEGORY['Acessório']
+      unit_cost: UNIT_COST_BY_CATEGORY[item.category] ?? UNIT_COST_BY_CATEGORY.Camisa
     });
   };
 
-  // Camisas — modelos apparel por gênero
   for (const gender of GENDERS) {
     for (const model of MODELS_BY_GENDER[gender]) {
       for (const fabric of FABRICS) {
@@ -245,7 +276,6 @@ function buildOperationalStockItems(defaults = SEED_DEFAULTS) {
     }
   }
 
-  // Regatas — taxonomia separada
   for (const model of MODELS_REGATA) {
     for (const fabric of FABRICS) {
       for (const color of COLORS) {
@@ -266,7 +296,6 @@ function buildOperationalStockItems(defaults = SEED_DEFAULTS) {
     }
   }
 
-  // Bonés
   for (const model of MODELS_BONE) {
     for (const color of COLORS) {
       pushItem({
@@ -283,7 +312,6 @@ function buildOperationalStockItems(defaults = SEED_DEFAULTS) {
     }
   }
 
-  // Caneca — item único
   const canecaColor = COLORS.find((c) => c.key === 'wht');
   pushItem({
     category: 'Caneca',
@@ -294,29 +322,8 @@ function buildOperationalStockItems(defaults = SEED_DEFAULTS) {
     color_label: canecaColor.label,
     color_hex: canecaColor.hex,
     size: ONE_SIZE,
-    sku: generateSKU('Caneca', MODEL_CANECA, canecaColor.key, ONE_SIZE, null, null)
+    sku: VALID_CANECA_SKU
   });
-
-  // Acessórios — fallback operacional anterior
-  for (const gender of GENDERS) {
-    for (const model of MODELS_BY_GENDER[gender]) {
-      for (const fabric of FABRICS) {
-        for (const color of COLORS) {
-          pushItem({
-            category: 'Acessório',
-            gender,
-            model,
-            fabric,
-            color_key: color.key,
-            color_label: color.label,
-            color_hex: color.hex,
-            size: ONE_SIZE,
-            sku: generateSKU('Acessório', model, color.key, ONE_SIZE, fabric, gender)
-          });
-        }
-      }
-    }
-  }
 
   return items;
 }
@@ -330,20 +337,29 @@ module.exports = {
   MODELS_REGATA,
   MODELS_BONE,
   MODEL_CANECA,
+  MATERIAL_CANECA,
+  VALID_CANECA_SKU,
   FABRICS,
   APPAREL_SIZES,
   ONE_SIZE,
   COLORS,
   UNIT_COST_BY_CATEGORY,
   SEED_DEFAULTS,
+  SEED_CATEGORIES,
   categoryUsesGender,
   categoryUsesFabric,
+  categoryUsesMaterial,
+  categoryHasSeedGrade,
+  categoryAllowsManualCreate,
   getModelsForCategory,
+  getMaterialsForCategory,
   getColorsForCategory,
   getSizesForCategory,
   normalizeCategory,
   getModelPrefix,
   generateSKU,
   stockDedupKey,
+  classifyLegacyInvalidStockItem,
+  isLegacyInvalidStockItem,
   buildOperationalStockItems
 };
