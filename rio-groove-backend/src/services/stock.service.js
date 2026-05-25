@@ -2,7 +2,8 @@ const supabase = require('../lib/supabase');
 const {
   buildOperationalStockItems,
   stockDedupKey,
-  SEED_DEFAULTS
+  SEED_DEFAULTS,
+  normalizeCategory
 } = require('../config/inventory');
 
 const getStock = async () => {
@@ -25,7 +26,9 @@ const getStockItem = async (id) => {
 const createStockItem = async (stockData) => {
   const payload = {
     category: stockData.category,
-    gender: stockData.gender || 'Masculino',
+    gender: Object.prototype.hasOwnProperty.call(stockData, 'gender')
+      ? stockData.gender
+      : 'Masculino',
     model: stockData.model,
     fabric: stockData.fabric || 'Lisa',
     color_key: stockData.color_key,
@@ -83,6 +86,15 @@ const adjustStock = async (id, quantity, reason) => {
 };
 
 const seedStockItems = async () => {
+  const { error: migrateErr } = await supabase
+    .from('stock_items')
+    .update({ category: 'Camisa' })
+    .eq('category', 'Camiseta');
+
+  if (migrateErr && migrateErr.code !== 'PGRST205') {
+    throw migrateErr;
+  }
+
   const itemsToInsert = buildOperationalStockItems(SEED_DEFAULTS);
 
   const { data: existing, error: fetchErr } = await supabase
@@ -99,7 +111,7 @@ const seedStockItems = async () => {
   const existingSet = new Set(
     (existing || []).map((row) =>
       stockDedupKey({
-        category: row.category,
+        category: normalizeCategory(row.category),
         gender: row.gender,
         model: row.model,
         fabric: row.fabric,

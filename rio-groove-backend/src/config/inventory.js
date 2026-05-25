@@ -5,7 +5,7 @@
 
 const CATEGORIES = [
   'Camisa',
-  'Camiseta',
+  'Regata',
   'Boné',
   'Caneca',
   'Acessório'
@@ -30,13 +30,14 @@ const MODELS_BY_GENDER = {
   ]
 };
 
+const MODELS_REGATA = ['Regular', 'Machão'];
+const MODELS_BONE = ['Trucker', 'Dad Hat', 'Snapback'];
+const MODEL_CANECA = '330ml';
+
 const FABRICS = ['Lisa', 'Estonada'];
 
 const APPAREL_SIZES = ['P', 'M', 'G', 'GG', 'XGG'];
 const ONE_SIZE = 'Tamanho Único';
-
-const APPAREL_CATEGORIES = ['Camisa', 'Camiseta'];
-const ACCESSORY_CATEGORIES = ['Boné', 'Caneca', 'Acessório'];
 
 const COLORS = [
   { label: 'Black', key: 'blk', hex: '#000000' },
@@ -54,7 +55,13 @@ const MODEL_PREFIXES = {
   'Oversized Feminina': 'OVF',
   'Boxy Cropped': 'BOX',
   'Cropped Tradicional': 'CRO',
-  'Regata Cropped Boxy': 'RCB'
+  'Regata Cropped Boxy': 'RCB',
+  Regular: 'RGT',
+  'Machão': 'MCH',
+  Trucker: 'TRK',
+  'Dad Hat': 'DAD',
+  Snapback: 'SNP',
+  '330ml': '330'
 };
 
 const RELAXED_FIT_PREFIX_BY_GENDER = {
@@ -64,18 +71,60 @@ const RELAXED_FIT_PREFIX_BY_GENDER = {
 
 const CATEGORY_PREFIXES = {
   Camisa: 'CAM',
-  Camiseta: 'TSH',
+  Regata: 'RGT',
   'Boné': 'CAP',
   Caneca: 'MUG',
   'Acessório': 'ACC'
 };
 
+const UNIT_COST_BY_CATEGORY = {
+  Camisa: 42,
+  Regata: 25,
+  'Boné': 25,
+  Caneca: 10,
+  'Acessório': 42
+};
+
 const SEED_DEFAULTS = {
   quantity: 10,
   min_stock: 5,
-  unit_cost: 42.0,
   is_active: true
 };
+
+function categoryUsesGender(category) {
+  return category === 'Camisa' || category === 'Acessório';
+}
+
+function categoryUsesFabric(category) {
+  return category === 'Camisa' || category === 'Regata' || category === 'Acessório';
+}
+
+function getModelsForCategory(category, gender) {
+  if (category === 'Camisa' || category === 'Acessório') {
+    return MODELS_BY_GENDER[gender] || [];
+  }
+  if (category === 'Regata') return MODELS_REGATA;
+  if (category === 'Boné') return MODELS_BONE;
+  if (category === 'Caneca') return [MODEL_CANECA];
+  return [];
+}
+
+function getColorsForCategory(category) {
+  if (category === 'Caneca') {
+    return COLORS.filter((c) => c.key === 'wht');
+  }
+  return COLORS;
+}
+
+function getSizesForCategory(category) {
+  if (category === 'Camisa' || category === 'Regata') return APPAREL_SIZES;
+  return [ONE_SIZE];
+}
+
+function normalizeCategory(category) {
+  if (category === 'Camiseta') return 'Camisa';
+  return category;
+}
 
 function getModelPrefix(model, gender) {
   if (model === 'Relaxed Fit' && gender && RELAXED_FIT_PREFIX_BY_GENDER[gender]) {
@@ -85,25 +134,38 @@ function getModelPrefix(model, gender) {
 }
 
 function generateSKU(category, model, colorKey, size, fabric, gender) {
-  const parts = [];
+  const cat = normalizeCategory(category);
 
-  if (ACCESSORY_CATEGORIES.includes(category) && CATEGORY_PREFIXES[category]) {
-    parts.push(CATEGORY_PREFIXES[category]);
+  if (cat === 'Caneca') {
+    return `MUG-330-${String(colorKey || 'wht').toUpperCase()}-U`;
+  }
+
+  if (cat === 'Boné') {
+    const prefix = getModelPrefix(model, null);
+    return [prefix, String(colorKey).toUpperCase(), 'U'].filter(Boolean).join('-');
+  }
+
+  if (cat === 'Acessório') {
+    const parts = ['ACC'];
     const modelPrefix = getModelPrefix(model, gender);
-    if (modelPrefix) {
-      parts.push(modelPrefix);
-    }
+    if (modelPrefix) parts.push(modelPrefix);
+    if (colorKey) parts.push(String(colorKey).toUpperCase());
+    parts.push('U');
+    if (fabric) parts.push(fabric === 'Estonada' ? 'EST' : 'LS');
+    return parts.join('-');
+  }
+
+  const parts = [];
+  const modelPrefix = getModelPrefix(model, gender);
+
+  if (modelPrefix) {
+    parts.push(modelPrefix);
+  } else if (CATEGORY_PREFIXES[cat]) {
+    parts.push(CATEGORY_PREFIXES[cat]);
+  } else if (model) {
+    parts.push(model.substring(0, 3).toUpperCase());
   } else {
-    const modelPrefix = getModelPrefix(model, gender);
-    if (modelPrefix) {
-      parts.push(modelPrefix);
-    } else if (category && CATEGORY_PREFIXES[category]) {
-      parts.push(CATEGORY_PREFIXES[category]);
-    } else if (model) {
-      parts.push(model.substring(0, 3).toUpperCase());
-    } else {
-      parts.push('SKU');
-    }
+    parts.push('SKU');
   }
 
   if (colorKey) {
@@ -115,7 +177,7 @@ function generateSKU(category, model, colorKey, size, fabric, gender) {
     parts.push(String(sizeStr).toUpperCase());
   }
 
-  if (fabric) {
+  if (fabric && categoryUsesFabric(cat)) {
     parts.push(fabric === 'Estonada' ? 'EST' : 'LS');
   }
 
@@ -123,59 +185,128 @@ function generateSKU(category, model, colorKey, size, fabric, gender) {
 }
 
 function stockDedupKey({ category, gender, model, fabric, color_key, size }) {
-  if (ACCESSORY_CATEGORIES.includes(category)) {
-    return `${category}|${gender}|${model}|${fabric}|${color_key}|${size}`;
+  const cat = normalizeCategory(category);
+
+  if (cat === 'Caneca') {
+    return `${cat}|${model}|${color_key}|${size}`;
   }
-  return `${gender}|${model}|${fabric}|${color_key}|${size}`;
+  if (cat === 'Boné') {
+    return `${cat}|${model}|${color_key}|${size}`;
+  }
+  if (cat === 'Regata') {
+    return `${cat}|${model}|${fabric}|${color_key}|${size}`;
+  }
+  if (cat === 'Camisa' || cat === 'Acessório') {
+    return `${cat}|${gender}|${model}|${fabric}|${color_key}|${size}`;
+  }
+  return `${cat}|${gender}|${model}|${fabric}|${color_key}|${size}`;
 }
 
 function buildOperationalStockItems(defaults = SEED_DEFAULTS) {
   const items = [];
-  const seenApparel = new Set();
 
-  for (const category of CATEGORIES) {
-    const sizes = ACCESSORY_CATEGORIES.includes(category)
-      ? [ONE_SIZE]
-      : APPAREL_SIZES;
+  const pushItem = (item) => {
+    items.push({
+      ...item,
+      category: normalizeCategory(item.category),
+      quantity: defaults.quantity,
+      min_stock: defaults.min_stock,
+      is_active: defaults.is_active,
+      unit_cost: UNIT_COST_BY_CATEGORY[item.category] ?? UNIT_COST_BY_CATEGORY['Acessório']
+    });
+  };
 
-    for (const gender of GENDERS) {
-      const models = MODELS_BY_GENDER[gender] || [];
-
-      for (const model of models) {
-        for (const fabric of FABRICS) {
-          for (const color of COLORS) {
-            for (const size of sizes) {
-              const storedCategory = APPAREL_CATEGORIES.includes(category)
-                ? 'Camiseta'
-                : category;
-
-              const base = {
-                category: storedCategory,
-                gender,
-                model,
-                fabric,
-                color_key: color.key,
-                color_label: color.label,
-                color_hex: color.hex,
-                size
-              };
-
-              if (APPAREL_CATEGORIES.includes(category)) {
-                const apparelKey = stockDedupKey(base);
-                if (seenApparel.has(apparelKey)) continue;
-                seenApparel.add(apparelKey);
-              }
-
-              items.push({
-                ...base,
-                sku: generateSKU(category, model, color.key, size, fabric, gender),
-                quantity: defaults.quantity,
-                min_stock: defaults.min_stock,
-                unit_cost: defaults.unit_cost,
-                is_active: defaults.is_active
-              });
-            }
+  // Camisas — modelos apparel por gênero
+  for (const gender of GENDERS) {
+    for (const model of MODELS_BY_GENDER[gender]) {
+      for (const fabric of FABRICS) {
+        for (const color of COLORS) {
+          for (const size of APPAREL_SIZES) {
+            pushItem({
+              category: 'Camisa',
+              gender,
+              model,
+              fabric,
+              color_key: color.key,
+              color_label: color.label,
+              color_hex: color.hex,
+              size,
+              sku: generateSKU('Camisa', model, color.key, size, fabric, gender)
+            });
           }
+        }
+      }
+    }
+  }
+
+  // Regatas — taxonomia separada
+  for (const model of MODELS_REGATA) {
+    for (const fabric of FABRICS) {
+      for (const color of COLORS) {
+        for (const size of APPAREL_SIZES) {
+          pushItem({
+            category: 'Regata',
+            gender: null,
+            model,
+            fabric,
+            color_key: color.key,
+            color_label: color.label,
+            color_hex: color.hex,
+            size,
+            sku: generateSKU('Regata', model, color.key, size, fabric, null)
+          });
+        }
+      }
+    }
+  }
+
+  // Bonés
+  for (const model of MODELS_BONE) {
+    for (const color of COLORS) {
+      pushItem({
+        category: 'Boné',
+        gender: null,
+        model,
+        fabric: null,
+        color_key: color.key,
+        color_label: color.label,
+        color_hex: color.hex,
+        size: ONE_SIZE,
+        sku: generateSKU('Boné', model, color.key, ONE_SIZE, null, null)
+      });
+    }
+  }
+
+  // Caneca — item único
+  const canecaColor = COLORS.find((c) => c.key === 'wht');
+  pushItem({
+    category: 'Caneca',
+    gender: null,
+    model: MODEL_CANECA,
+    fabric: null,
+    color_key: canecaColor.key,
+    color_label: canecaColor.label,
+    color_hex: canecaColor.hex,
+    size: ONE_SIZE,
+    sku: generateSKU('Caneca', MODEL_CANECA, canecaColor.key, ONE_SIZE, null, null)
+  });
+
+  // Acessórios — fallback operacional anterior
+  for (const gender of GENDERS) {
+    for (const model of MODELS_BY_GENDER[gender]) {
+      for (const fabric of FABRICS) {
+        for (const color of COLORS) {
+          pushItem({
+            category: 'Acessório',
+            gender,
+            model,
+            fabric,
+            color_key: color.key,
+            color_label: color.label,
+            color_hex: color.hex,
+            size: ONE_SIZE,
+            sku: generateSKU('Acessório', model, color.key, ONE_SIZE, fabric, gender)
+          });
         }
       }
     }
@@ -188,13 +319,21 @@ module.exports = {
   CATEGORIES,
   GENDERS,
   MODELS_BY_GENDER,
+  MODELS_REGATA,
+  MODELS_BONE,
+  MODEL_CANECA,
   FABRICS,
   APPAREL_SIZES,
   ONE_SIZE,
-  APPAREL_CATEGORIES,
-  ACCESSORY_CATEGORIES,
   COLORS,
+  UNIT_COST_BY_CATEGORY,
   SEED_DEFAULTS,
+  categoryUsesGender,
+  categoryUsesFabric,
+  getModelsForCategory,
+  getColorsForCategory,
+  getSizesForCategory,
+  normalizeCategory,
   getModelPrefix,
   generateSKU,
   stockDedupKey,
