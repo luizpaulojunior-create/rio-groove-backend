@@ -13,6 +13,12 @@ const CATEGORIES = [
 
 const GENDERS = ['Masculino', 'Feminino'];
 
+/** Valor persistido quando a categoria não usa gênero (coluna NOT NULL no DB). */
+const GENDER_NEUTRAL = 'Unissex';
+
+/** Valor persistido quando a categoria não usa malha (coluna NOT NULL no DB). */
+const FABRIC_NEUTRAL = 'N/A';
+
 const MODELS_BY_GENDER = {
   Masculino: [
     'Oversized Boxy',
@@ -246,7 +252,7 @@ function buildOperationalStockItems(defaults = SEED_DEFAULTS) {
         for (const size of APPAREL_SIZES) {
           pushItem({
             category: 'Regata',
-            gender: null,
+            gender: GENDER_NEUTRAL,
             model,
             fabric,
             color_key: color.key,
@@ -265,9 +271,9 @@ function buildOperationalStockItems(defaults = SEED_DEFAULTS) {
     for (const color of COLORS) {
       pushItem({
         category: 'Boné',
-        gender: null,
+        gender: GENDER_NEUTRAL,
         model,
-        fabric: null,
+        fabric: FABRIC_NEUTRAL,
         color_key: color.key,
         color_label: color.label,
         color_hex: color.hex,
@@ -281,9 +287,9 @@ function buildOperationalStockItems(defaults = SEED_DEFAULTS) {
   const canecaColor = COLORS.find((c) => c.key === 'wht');
   pushItem({
     category: 'Caneca',
-    gender: null,
+    gender: GENDER_NEUTRAL,
     model: MODEL_CANECA,
-    fabric: null,
+    fabric: FABRIC_NEUTRAL,
     color_key: canecaColor.key,
     color_label: canecaColor.label,
     color_hex: canecaColor.hex,
@@ -318,6 +324,8 @@ function buildOperationalStockItems(defaults = SEED_DEFAULTS) {
 module.exports = {
   CATEGORIES,
   GENDERS,
+  GENDER_NEUTRAL,
+  FABRIC_NEUTRAL,
   MODELS_BY_GENDER,
   MODELS_REGATA,
   MODELS_BONE,

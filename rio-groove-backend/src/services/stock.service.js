@@ -3,7 +3,10 @@ const {
   buildOperationalStockItems,
   stockDedupKey,
   SEED_DEFAULTS,
-  normalizeCategory
+  normalizeCategory,
+  GENDER_NEUTRAL,
+  FABRIC_NEUTRAL,
+  categoryUsesFabric
 } = require('../config/inventory');
 
 const getStock = async () => {
@@ -123,7 +126,14 @@ const seedStockItems = async () => {
 
   const newItems = itemsToInsert.filter(
     (item) => !existingSet.has(stockDedupKey(item))
-  );
+  ).map((item) => {
+    const cat = normalizeCategory(item.category);
+    return {
+      ...item,
+      gender: item.gender || GENDER_NEUTRAL,
+      fabric: item.fabric || (categoryUsesFabric(cat) ? 'Lisa' : FABRIC_NEUTRAL)
+    };
+  });
 
   const BATCH_SIZE = 200;
   for (let i = 0; i < newItems.length; i += BATCH_SIZE) {
