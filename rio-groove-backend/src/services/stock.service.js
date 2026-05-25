@@ -1,4 +1,9 @@
 const supabase = require('../lib/supabase');
+const {
+  buildOperationalStockItems,
+  stockDedupKey,
+  SEED_DEFAULTS
+} = require('../config/inventory');
 
 const getStock = async () => {
   const { data, error } = await supabase.from('stock_items').select('*').order('created_at', { ascending: false });
@@ -78,45 +83,12 @@ const adjustStock = async (id, quantity, reason) => {
 };
 
 const seedStockItems = async () => {
-  const category = 'Camiseta';
-  const model = 'Oversized';
-  const gender = 'Masculino';
-  const fabric = 'Lisa';
-  const colors = [
-    { key: 'blk', label: 'Preto', hex: '#000000' },
-    { key: 'wht', label: 'Branco', hex: '#FFFFFF' },
-    { key: 'off', label: 'Off White', hex: '#F5F1E8' }
-  ];
-  const sizes = ['P', 'M', 'G', 'GG'];
-  const defaultCost = 42.00;
-  const defaultStock = 10;
-  const defaultMinStock = 5;
+  const itemsToInsert = buildOperationalStockItems(SEED_DEFAULTS);
 
-  const itemsToInsert = [];
+  const { data: existing, error: fetchErr } = await supabase
+    .from('stock_items')
+    .select('category, gender, model, fabric, color_key, size');
 
-  for (const color of colors) {
-    for (const size of sizes) {
-      const sku = `OVR-${color.key.toUpperCase()}-${size}-LS`;
-      itemsToInsert.push({
-        category,
-        gender,
-        fabric,
-        model,
-        color_key: color.key,
-        color_label: color.label,
-        color_hex: color.hex,
-        size,
-        unit_cost: defaultCost,
-        quantity: defaultStock,
-        min_stock: defaultMinStock,
-        sku,
-        is_active: true
-      });
-    }
-  }
-
-  // Check existing
-  const { data: existing, error: fetchErr } = await supabase.from('stock_items').select('model, color_key, size');
   if (fetchErr) {
     if (fetchErr.code === 'PGRST205') {
       throw new Error('Tabela stock_items não existe. Execute o script SQL no Supabase.');
@@ -124,26 +96,49 @@ const seedStockItems = async () => {
     throw fetchErr;
   }
 
-  const existingSet = new Set(existing.map(e => `${e.model}-${e.color_key}-${e.size}`));
-  const newItems = itemsToInsert.filter(item => !existingSet.has(`${item.model}-${item.color_key}-${item.size}`));
+  const existingSet = new Set(
+    (existing || []).map((row) =>
+      stockDedupKey({
+        category: row.category,
+        gender: row.gender,
+        model: row.model,
+        fabric: row.fabric,
+        color_key: row.color_key,
+        size: row.size
+      })
+    )
+  );
 
-  if (newItems.length > 0) {
-    const { error: insertErr } = await supabase.from('stock_items').insert(newItems);
+  const newItems = itemsToInsert.filter(
+    (item) => !existingSet.has(stockDedupKey(item))
+  );
+
+  const BATCH_SIZE = 200;
+  for (let i = 0; i < newItems.length; i += BATCH_SIZE) {
+    const batch = newItems.slice(i, i + BATCH_SIZE);
+    const { error: insertErr } = await supabase.from('stock_items').insert(batch);
     if (insertErr) throw insertErr;
+  }
+
+  const skuSet = new Set(itemsToInsert.map((item) => item.sku));
+  if (skuSet.size !== itemsToInsert.length) {
+    throw new Error('Colisão de SKU detectada na grade operacional base.');
   }
 
   let message = '';
   if (newItems.length === itemsToInsert.length) {
-    message = `${itemsToInsert.length} itens criados com sucesso`;
+    message = `${newItems.length} itens criados com sucesso (grade operacional completa).`;
   } else if (newItems.length > 0) {
-    message = `${newItems.length} novos itens adicionados\n${itemsToInsert.length - newItems.length} já existiam`;
+    message = `${newItems.length} novos itens adicionados. ${itemsToInsert.length - newItems.length} já existiam.`;
   } else {
-    message = `Todos os ${itemsToInsert.length} itens já existiam`;
+    message = `Grade operacional completa: todos os ${itemsToInsert.length} itens já existiam.`;
   }
 
   return {
+    total_expected: itemsToInsert.length,
     total_created: newItems.length,
     already_existed: itemsToInsert.length - newItems.length,
+    sample_skus: itemsToInsert.slice(0, 8).map((item) => item.sku),
     message
   };
 };

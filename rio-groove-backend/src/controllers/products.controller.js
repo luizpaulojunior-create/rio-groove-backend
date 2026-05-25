@@ -58,9 +58,7 @@ const createProduct = asyncHandler(async (req, res) => {
       try { productData.variants = JSON.parse(productData.variants); } catch(e) { productData.variants = []; }
     }
 
-    if (productData.variants && productData.variants.length > 0) {
-      productData.stock = productData.variants.reduce((acc, curr) => acc + (parseInt(curr.stock) || 0), 0);
-    }
+    // Fase 1: products.stock legado — não recalcular a partir de variantes.
 
     // Apenas campos que existem no DB
     const allowedFields = ['name', 'slug', 'description', 'shortDescription', 'price', 'stock', 'category', 'active', 'collection_id', 'existing_images', 'collections', 'colors', 'fabric_appearances', 'variants'];
@@ -144,9 +142,7 @@ const updateProduct = asyncHandler(async (req, res) => {
       try { productData.variants = JSON.parse(productData.variants); } catch(e) { productData.variants = []; }
     }
 
-    if (productData.variants && productData.variants.length > 0) {
-      productData.stock = productData.variants.reduce((acc, curr) => acc + (parseInt(curr.stock) || 0), 0);
-    }
+    // Fase 1: products.stock legado — não recalcular a partir de variantes.
 
     // Apenas campos que existem no DB
     const allowedFields = ['name', 'slug', 'description', 'shortDescription', 'price', 'stock', 'category', 'active', 'collection_id', 'existing_images', 'collections', 'colors', 'fabric_appearances', 'variants'];
