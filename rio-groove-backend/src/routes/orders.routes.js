@@ -1,11 +1,12 @@
 const express = require('express');
-const { getAllOrders, createManualOrder, getOrder } = require('../controllers/orders.controller');
+const requireAdminAuth = require('../middlewares/require-admin-auth');
+const { getAllOrders, createManualOrder, getOrder, updateOrderStatus } = require('../controllers/orders.controller');
 
 const router = express.Router();
 
-router.get('/api/orders', getAllOrders);
-router.post('/api/orders', createManualOrder);
-router.get('/api/orders/:reference', getOrder);
-router.put('/api/orders/:id/status', require('../controllers/orders.controller').updateOrderStatus);
+router.get('/api/orders', requireAdminAuth, getAllOrders);
+router.post('/api/orders', requireAdminAuth, createManualOrder);
+router.get('/api/orders/:reference', requireAdminAuth, getOrder);
+router.put('/api/orders/:id/status', requireAdminAuth, updateOrderStatus);
 
 module.exports = router;

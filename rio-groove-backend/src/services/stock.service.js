@@ -1,7 +1,4 @@
-const { createClient } = require('@supabase/supabase-js');
-const env = require('../config/env');
-
-const supabase = createClient(env.supabaseUrl, env.supabaseServiceRoleKey);
+const supabase = require('../lib/supabase');
 
 const getStock = async () => {
   const { data, error } = await supabase.from('stock_items').select('*').order('created_at', { ascending: false });

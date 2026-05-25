@@ -3,6 +3,7 @@ const { loginMelhorEnvio, callbackMelhorEnvio } = require('../controllers/auth.c
 
 const router = express.Router();
 
+// OAuth via redirect de browser — não envia Bearer; callback permanece público (Melhor Envio)
 router.get('/melhor-envio/login', loginMelhorEnvio);
 router.get('/melhor-envio/callback', callbackMelhorEnvio);
 

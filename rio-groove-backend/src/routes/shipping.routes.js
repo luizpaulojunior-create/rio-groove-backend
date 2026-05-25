@@ -1,4 +1,5 @@
 const express = require('express');
+const requireAdminAuth = require('../middlewares/require-admin-auth');
 const {
   shippingQuote,
   purchaseOrderShipping,
@@ -9,14 +10,14 @@ const { createShipmentInCart } = require('../services/shipping.service');
 
 const router = express.Router();
 
-router.post('/api/shipping/quote', shippingQuote);
-router.post('/api/shipping/purchase', purchaseOrderShipping);
-router.post('/api/shipping/label', generateOrderShippingLabel);
-router.get('/api/shipping/tracking/:id', getShippingTracking);
+router.post('/api/shipping/quote', requireAdminAuth, shippingQuote);
+router.post('/api/shipping/purchase', requireAdminAuth, purchaseOrderShipping);
+router.post('/api/shipping/label', requireAdminAuth, generateOrderShippingLabel);
+router.get('/api/shipping/tracking/:id', requireAdminAuth, getShippingTracking);
 
 // ROTA TEMPORÁRIA DE DEBUG - Melhor Envio Cart
 // Pode ser removida após a validação
-router.get('/debug/test-melhor-envio-cart', async (req, res) => {
+router.get('/debug/test-melhor-envio-cart', requireAdminAuth, async (req, res) => {
   try {
     const mockOrder = {
       customer_name: "Cliente Teste Debug",
