@@ -41,6 +41,30 @@ function normalizeColorVariantLabel(value) {
   return map[norm] || String(value).trim();
 }
 
+const SEO_FIELDS = ['meta_title', 'meta_description', 'seo_keywords', 'og_image'];
+
+function attachSeoFields(target, source) {
+  for (const field of SEO_FIELDS) {
+    if (source[field] !== undefined) {
+      target[field] = source[field] || null;
+    }
+  }
+  return target;
+}
+
+function omitSeoFields(data) {
+  const next = { ...data };
+  for (const field of SEO_FIELDS) {
+    delete next[field];
+  }
+  return next;
+}
+
+function isMissingSeoColumnError(error) {
+  const msg = String(error?.message || '');
+  return SEO_FIELDS.some((field) => msg.includes(field) && msg.includes('schema cache'));
+}
+
 function buildImageRow(img, productId, index) {
   const colorVariant =
     normalizeColorVariantLabel(img.color_variant || img.colorVariant) ||
@@ -99,16 +123,17 @@ async function createProduct(productData) {
     fabric_appearances: productData.fabric_appearances || [],
     tags: productData.tags || ['insumo:Camisa', 'model:Oversized Tradicional'],
     image_url: productData.image_url || null,
-    meta_title: productData.meta_title || null,
-    meta_description: productData.meta_description || null,
-    seo_keywords: productData.seo_keywords || null,
-    og_image: productData.og_image || null,
   };
+  attachSeoFields(cleanData, productData);
 
   console.log(cleanData);
   console.log(Object.keys(cleanData));
 
-  const { data, error } = await supabase.from('products').insert(cleanData).select('*').single();
+  let { data, error } = await supabase.from('products').insert(cleanData).select('*').single();
+  if (error && isMissingSeoColumnError(error)) {
+    console.warn('[products.service] Colunas SEO ausentes — salvando sem SEO. Rode supabase/03_product_seo_columns.sql');
+    ({ data, error } = await supabase.from('products').insert(omitSeoFields(cleanData)).select('*').single());
+  }
   if (error) {
     const errorObj = new Error(error.message);
     errorObj.response = { data: { error: error.message } };
@@ -154,11 +179,8 @@ async function updateProduct(id, updates) {
     fabric_appearances: updates.fabric_appearances,
     tags: updates.tags,
     image_url: updates.image_url,
-    meta_title: updates.meta_title,
-    meta_description: updates.meta_description,
-    seo_keywords: updates.seo_keywords,
-    og_image: updates.og_image,
   };
+  attachSeoFields(cleanData, updates);
 
   Object.keys(cleanData).forEach(key => {
     if (cleanData[key] === undefined) {
@@ -166,7 +188,11 @@ async function updateProduct(id, updates) {
     }
   });
 
-  const { data, error } = await supabase.from('products').update(cleanData).eq('id', id).select('*').single();
+  let { data, error } = await supabase.from('products').update(cleanData).eq('id', id).select('*').single();
+  if (error && isMissingSeoColumnError(error)) {
+    console.warn('[products.service] Colunas SEO ausentes — atualizando sem SEO. Rode supabase/03_product_seo_columns.sql');
+    ({ data, error } = await supabase.from('products').update(omitSeoFields(cleanData)).eq('id', id).select('*').single());
+  }
   if (error) {
     const errorObj = new Error(error.message);
     errorObj.response = { data: { error: error.message } };
