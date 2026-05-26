@@ -40,6 +40,7 @@ async function createCheckout({ payload }) {
       payment_status: 'pending',
       payment_provider: paymentProvider,
       currency: env.defaultCurrency,
+      customer_id: payload.customer?.id || payload.customerId || null,
       customer_name: payload.customer.name,
       customer_email: payload.customer.email,
       customer_phone: payload.customer.phone,
