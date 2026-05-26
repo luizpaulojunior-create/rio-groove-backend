@@ -11,6 +11,7 @@ function normalizeItem(rawItem = {}) {
   return {
     productName,
     slug: normalizeString(rawItem.slug),
+    sku: normalizeString(rawItem.sku),
     imageUrl: normalizeString(rawItem.image || rawItem.image_url || rawItem.data_image),
     color,
     size,

@@ -186,11 +186,20 @@ function isPickupShipping(payment, merchantOrder, existingOrder) {
 }
 
 async function processMercadoPagoWebhook(req) {
+  const { verifyMercadoPagoWebhookSignature } = require('../utils/mercadopago-webhook');
+  const signatureCheck = verifyMercadoPagoWebhookSignature(req);
+
+  if (!signatureCheck.valid) {
+    console.warn('[PaymentsService] Webhook MP rejeitado:', signatureCheck.reason);
+    throw new Error(signatureCheck.reason || 'Assinatura do webhook inválida.');
+  }
+
+  if (signatureCheck.skipped) {
+    console.warn('[PaymentsService] MERCADO_PAGO_WEBHOOK_SECRET não configurado — assinatura não verificada.');
+  }
+
   const notification = extractNotificationInfo(req);
   console.log('[PaymentsService] Webhook recebido', {
-    headers: req.headers,
-    body: req.body,
-    query: req.query,
     topic: notification.rawTopic,
     action: notification.rawAction,
     resourceId: notification.resourceId,

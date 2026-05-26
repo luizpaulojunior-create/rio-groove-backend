@@ -16,10 +16,10 @@ const uploadFile = asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'Nenhum arquivo enviado' });
   }
 
-  const { bucket, path } = req.body;
-  
-  // Use config bucket if not provided
-  const targetBucket = bucket || STORAGE_BUCKET;
+  const { path } = req.body;
+
+  // Bucket fixo — ignora bucket arbitrário do client
+  const targetBucket = STORAGE_BUCKET;
   console.log('Target Bucket:', targetBucket, 'Path:', path);
 
   const publicUrl = await uploadService.uploadImage(req.file, targetBucket, path);

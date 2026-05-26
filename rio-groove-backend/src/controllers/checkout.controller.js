@@ -1,6 +1,7 @@
 const asyncHandler = require('../utils/asyncHandler');
 const { validateCheckoutPayload } = require('../utils/validation');
 const { createCheckout } = require('../services/checkout.service');
+const { applyServerSidePricing } = require('../services/checkout-pricing.service');
 
 const checkout = asyncHandler(async (req, res) => {
   const validation = validateCheckoutPayload(req.body || {});
@@ -12,7 +13,7 @@ const checkout = asyncHandler(async (req, res) => {
     });
   }
 
-  const result = await createCheckout({ payload: validation.data });
+  const result = await createCheckout({ payload: await applyServerSidePricing(validation.data) });
 
   return res.status(201).json({
     message: 'Checkout criado com sucesso.',

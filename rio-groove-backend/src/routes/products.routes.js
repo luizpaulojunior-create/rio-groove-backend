@@ -1,5 +1,5 @@
 const express = require('express');
-const multer = require('multer');
+const { imageUpload } = require('../config/upload');
 const requireAdminAuth = require('../middlewares/require-admin-auth');
 const {
   getAllProducts,
@@ -10,7 +10,7 @@ const {
 } = require('../controllers/products.controller');
 
 const router = express.Router();
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = imageUpload;
 
 router.get('/api/products', getAllProducts);
 router.get('/api/products/:slug', getProduct);

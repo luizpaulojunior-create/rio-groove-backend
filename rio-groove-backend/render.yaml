@@ -17,13 +17,13 @@ services:
       - key: BACKEND_URL
         sync: false
       - key: SUPABASE_URL
-        value: https://cvpobvvkhcqasumhfwps.supabase.co
+        sync: false
       - key: SUPABASE_ANON_KEY
-        value: sb_publishable_iR4bqbFa6WUtG5o1EOQUwQ_AETsl9S1
+        sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
       - key: MERCADO_PAGO_PUBLIC_KEY
-        value: APP_USR-9bbcd335-9f64-4212-8226-1c039fd7b68d
+        sync: false
       - key: MERCADO_PAGO_ACCESS_TOKEN
         sync: false
       - key: MERCADO_PAGO_WEBHOOK_SECRET
