@@ -1,10 +1,10 @@
 const express = require('express');
 const { mercadoPagoWebhook, stripeWebhook } = require('../controllers/webhook.controller');
+const { webhookLimiter } = require('../middlewares/rate-limit');
 
 const router = express.Router();
 
-router.post('/api/webhooks/mercadopago', mercadoPagoWebhook);
-// Nota: a rota /api/webhooks/stripe deve usar express.raw, o que já foi configurado no app.js
-router.post('/api/webhooks/stripe', stripeWebhook);
+router.post('/api/webhooks/mercadopago', webhookLimiter, mercadoPagoWebhook);
+router.post('/api/webhooks/stripe', webhookLimiter, stripeWebhook);
 
 module.exports = router;

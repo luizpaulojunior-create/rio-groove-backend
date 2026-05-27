@@ -65,4 +65,8 @@ if (missing.length) {
   throw new Error(`Variáveis obrigatórias ausentes: ${missing.join(', ')}`);
 }
 
+if (env.nodeEnv === 'production' && !env.mercadoPagoWebhookSecret) {
+  throw new Error('MERCADO_PAGO_WEBHOOK_SECRET é obrigatório em produção');
+}
+
 module.exports = env;

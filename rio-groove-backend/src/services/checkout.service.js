@@ -12,6 +12,7 @@ const {
   onlyDigits
 } = require('../utils/order');
 const { validateStockForItems } = require('./stockCheckout.service');
+const { resolveAffiliate, upsertNewsletterSubscriber } = require('./growth.service');
 
 async function createCheckout({ payload }) {
   const orderId = randomUUID();
@@ -28,10 +29,16 @@ async function createCheckout({ payload }) {
   
   console.log('[Checkout] Criando pedido', orderId);
 
+  const affiliateRef =
+    payload.metadata?.affiliate_ref ||
+    payload.metadata?.affiliateRef ||
+    payload.affiliateRef ||
+    null;
+  const affiliate = affiliateRef ? await resolveAffiliate(affiliateRef) : null;
+
   const paymentProvider = payload.provider === 'stripe' ? 'stripe' : 'mercado_pago';
 
-  const order = await createOrder({
-    order: {
+  const orderPayload = {
       id: orderId,
       order_number: orderNumber,
       external_reference: externalReference,
@@ -45,6 +52,8 @@ async function createCheckout({ payload }) {
       customer_phone: payload.customer.phone,
       customer_cpf: payload.customer.cpf || null,
       accepts_marketing: payload.customer.acceptsMarketing,
+      affiliate_id: affiliate?.id || null,
+      affiliate_slug: affiliate?.slug || null,
       shipping_method: payload.shipping.label,
       shipping_provider: payload.shipping.provider || null,
       melhor_envio_shipment_id: payload.shipping.id || null,
@@ -74,8 +83,28 @@ async function createCheckout({ payload }) {
         created_at: new Date().toISOString(),
         createdAt: new Date().toISOString(),
       }],
+  };
+
+  let order;
+  try {
+    order = await createOrder({ order: orderPayload });
+  } catch (err) {
+    const msg = String(err?.message || '');
+    if (msg.includes('affiliate') || msg.includes('column')) {
+      const { affiliate_id, affiliate_slug, ...rest } = orderPayload;
+      order = await createOrder({ order: rest });
+    } else {
+      throw err;
     }
-  });
+  }
+
+  if (payload.customer.acceptsMarketing) {
+    await upsertNewsletterSubscriber({
+      email: payload.customer.email,
+      name: payload.customer.name,
+      source: 'checkout',
+    });
+  }
 
   console.log('[Checkout] Pedido salvo no banco:', order?.id);
 

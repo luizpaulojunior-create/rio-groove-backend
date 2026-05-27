@@ -191,21 +191,22 @@ async function applyServerSidePricing(payload) {
   const productsBySlug = await fetchProductsBySlugs(slugs);
 
   const items = payload.items.map((item) => {
-    const product = item.slug ? productsBySlug.get(item.slug) : null;
+    if (!item.slug) {
+      throw new Error('Item do carrinho sem identificador de produto.');
+    }
+
+    const product = productsBySlug.get(item.slug);
 
     if (!product) {
-      if (item.slug) {
-        console.warn('[CheckoutPricing] Produto não encontrado para slug:', item.slug);
-      }
-      return {
-        ...item,
-        unitPrice: item.unitPrice,
-        lineTotal: roundMoney(item.unitPrice * item.quantity),
-        productName: item.productName,
-      };
+      const slug = item.slug || item.raw?.slug || 'desconhecido';
+      throw new Error(`Produto inválido ou indisponível: ${slug}`);
     }
 
     const unitPrice = resolveItemUnitPrice(product, item);
+    if (unitPrice <= 0) {
+      throw new Error(`Preço inválido para o produto: ${product.slug}`);
+    }
+
     return {
       ...item,
       productName: product.name || item.productName,

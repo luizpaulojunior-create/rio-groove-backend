@@ -3,6 +3,7 @@ const cors = require('cors');
 const env = require('./config/env');
 const routes = require('./routes');
 const errorHandler = require('./middlewares/error-handler');
+const requestId = require('./middlewares/request-id');
 
 const app = express();
 
@@ -55,6 +56,7 @@ const corsOptions = {
 };
 
 // Garante que o middleware CORS seja o primeiro a ser carregado antes de qualquer rota
+app.use(requestId);
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions)); // Garante resposta correta ao preflight OPTIONS
 

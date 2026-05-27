@@ -1,3 +1,6 @@
+const { initSentry } = require('./lib/monitoring');
+initSentry();
+
 const app = require('./app');
 const env = require('./config/env');
 const { testResend } = require('./services/notifications.service');
@@ -10,7 +13,8 @@ console.log('[BOOT] OAuth Melhor Envio routes registradas');
 console.log('[ENV CONFIG]', {
   nodeEnv: env.nodeEnv,
   hasFrontendUrl: !!env.frontendUrl,
-  hasBackendUrl: !!env.backendUrl
+  hasBackendUrl: !!env.backendUrl,
+  hasSentry: !!process.env.SENTRY_DSN,
 });
 
 console.log('[ZAPI CONFIG]', {
@@ -22,17 +26,11 @@ console.log('[ZAPI CONFIG]', {
 console.log('[RESEND CONFIG]', {
   hasResendApiKey: !!env.resendApiKey,
   hasAdminNotificationEmail: !!env.adminNotificationEmail,
-  adminNotificationEmail: env.adminNotificationEmail // log only email, not token
 });
 
-console.log('[RESEND DEBUG]', {
-  hasKey: !!env.resendApiKey,
-  prefix: env.resendApiKey ? env.resendApiKey.substring(0, 5) : 'N/A',
-  length: env.resendApiKey ? env.resendApiKey.length : 0
-});
-
-// Teste automático na inicialização
-testResend().catch(console.error);
+if (env.nodeEnv === 'development' || process.env.RUN_BOOT_TESTS === 'true') {
+  testResend().catch(console.error);
+}
 
 app.listen(env.port, () => {
   console.log(`Rio Groove Store Backend rodando na porta ${env.port}`);

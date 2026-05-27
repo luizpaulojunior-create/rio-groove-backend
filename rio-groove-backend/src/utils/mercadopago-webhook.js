@@ -8,6 +8,9 @@ const env = require('../config/env');
 function verifyMercadoPagoWebhookSignature(req) {
   const secret = env.mercadoPagoWebhookSecret;
   if (!secret) {
+    if (env.nodeEnv === 'production') {
+      return { valid: false, reason: 'MERCADO_PAGO_WEBHOOK_SECRET não configurado.' };
+    }
     return { valid: true, skipped: true };
   }
 

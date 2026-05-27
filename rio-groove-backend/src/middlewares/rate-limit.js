@@ -1,0 +1,43 @@
+const rateLimit = require('express-rate-limit');
+
+function createLimiter({ windowMs, max, message }) {
+  return rateLimit({
+    windowMs,
+    max,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: message },
+    skip: (req) => process.env.NODE_ENV === 'test',
+  });
+}
+
+const checkoutLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: 'Muitas tentativas de checkout. Aguarde alguns minutos.',
+});
+
+const shippingQuoteLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 40,
+  message: 'Muitas cotações de frete. Aguarde alguns minutos.',
+});
+
+const orderStatusLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  message: 'Muitas consultas de pedido. Aguarde alguns minutos.',
+});
+
+const webhookLimiter = createLimiter({
+  windowMs: 60 * 1000,
+  max: 120,
+  message: 'Limite de webhooks excedido.',
+});
+
+module.exports = {
+  checkoutLimiter,
+  shippingQuoteLimiter,
+  orderStatusLimiter,
+  webhookLimiter,
+};
