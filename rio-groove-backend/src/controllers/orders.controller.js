@@ -89,6 +89,37 @@ const getOrder = asyncHandler(async (req, res) => {
   return res.json({ order });
 });
 
+const getOrderPublicStatus = asyncHandler(async (req, res) => {
+  const order = await getOrderWithItems(req.params.reference);
+
+  if (!order) {
+    return res.status(404).json({ message: 'Pedido não encontrado.' });
+  }
+
+  return res.json({
+    orderId: order.id,
+    orderNumber: order.order_number,
+    externalReference: order.external_reference,
+    status: order.status,
+    paymentStatus: order.payment_status,
+    paymentProvider: order.payment_provider,
+    total: order.total_amount,
+    subtotal: order.subtotal_amount,
+    shippingAmount: order.shipping_amount,
+    shippingMethod: order.shipping_method,
+    paidAt: order.paid_at,
+    createdAt: order.created_at,
+    items: (order.items || []).map((item) => ({
+      productName: item.product_name,
+      quantity: item.quantity,
+      unitPrice: item.unit_price,
+      lineTotal: item.line_total,
+      color: item.color,
+      size: item.size,
+    })),
+  });
+});
+
 const updateOrderStatus = asyncHandler(async (req, res) => {
     const { status, tracking_code, tracking_url } = req.body;
     const updates = {};
@@ -104,5 +135,6 @@ module.exports = {
   getAllOrders,
   createManualOrder,
   getOrder,
+  getOrderPublicStatus,
   updateOrderStatus
 };

@@ -151,11 +151,14 @@ async function createCheckout({ payload }) {
       };
     }
 
+    const returnBase = String(
+      payload.return_origin || payload.returnOrigin || env.frontendUrl
+    ).replace(/\/$/, '');
     const notificationUrl = payload.notification_url || payload.notificationUrl || `${env.backendUrl}/api/webhooks/mercadopago`;
     const backUrls = payload.back_urls || payload.backUrls || {
-      success: `${env.frontendUrl}/?payment=approved`,
-      pending: `${env.frontendUrl}/?payment=pending`,
-      failure: `${env.frontendUrl}/?payment=failure`
+      success: `${returnBase}/success?payment=approved&external_reference=${encodeURIComponent(externalReference)}`,
+      pending: `${returnBase}/success?payment=pending&external_reference=${encodeURIComponent(externalReference)}`,
+      failure: `${returnBase}/success?payment=failure&external_reference=${encodeURIComponent(externalReference)}`,
     };
     const autoReturn = payload.auto_return || payload.autoReturn || 'approved';
     const metadata = {
@@ -209,6 +212,10 @@ async function createCheckout({ payload }) {
     // MP SDK v2.3.0 sometimes returns the preference nested in 'body' depending on usage, 
     // but preferenceClient.create returns the object itself or nested? Let's safeguard:
     const prefData = preference.body || preference;
+    const isTestToken = String(env.mercadoPagoAccessToken || '').startsWith('TEST-');
+    const checkoutUrl = isTestToken
+      ? prefData.sandbox_init_point || prefData.init_point
+      : prefData.init_point || prefData.sandbox_init_point;
 
     console.log('[Checkout] init_point recebido:', prefData.init_point);
     console.log('[Checkout] sandbox_init_point recebido:', prefData.sandbox_init_point);
@@ -228,7 +235,7 @@ async function createCheckout({ payload }) {
       preferenceId: prefData.id,
       initPoint: prefData.init_point,
       sandboxInitPoint: prefData.sandbox_init_point,
-      checkoutUrl: prefData.init_point || prefData.sandbox_init_point, // Forçando mapeamento extra pro frontend
+      checkoutUrl,
       publicKey: env.mercadoPagoPublicKey,
       totals: {
         subtotal: payload.subtotal,

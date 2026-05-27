@@ -102,6 +102,7 @@ function validateCheckoutPayload(body = {}) {
   const notificationUrl = normalizeString(body.notification_url || body.notificationUrl);
   const backUrls = body.back_urls || body.backUrls || undefined;
     const autoReturn = normalizeString(body.auto_return || body.autoReturn);
+    const returnOrigin = normalizeString(body.return_origin || body.returnOrigin);
     const metadata = typeof body.metadata === 'object' && body.metadata !== null ? body.metadata : undefined;
     const provider = normalizeString(body.provider || 'mercado_pago');
 
@@ -120,6 +121,7 @@ function validateCheckoutPayload(body = {}) {
       notification_url: notificationUrl,
       back_urls: backUrls,
         auto_return: autoReturn,
+        return_origin: returnOrigin,
         metadata,
         provider,
         rawPayload: body
