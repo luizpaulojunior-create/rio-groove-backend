@@ -70,6 +70,12 @@ async function resolveServerSideShipping(payload, subtotal) {
     if (!isRioPickupCep(cep)) {
       throw new Error('Retirada presencial disponível apenas para CEPs do Rio de Janeiro (20–28).');
     }
+    const acknowledged =
+      payload.metadata?.pickup_acknowledged === true ||
+      payload.rawPayload?.metadata?.pickup_acknowledged === true;
+    if (!acknowledged) {
+      throw new Error('Confirme os termos da retirada presencial para continuar.');
+    }
     return {
       id,
       label: shipping.label || 'Retirada presencial',
