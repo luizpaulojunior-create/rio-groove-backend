@@ -1,7 +1,12 @@
 const asyncHandler = require('../utils/asyncHandler');
 const { validateCheckoutPayload } = require('../utils/validation');
-const { createOrder, createOrderItems, getOrderWithItems, getOrders, updateOrderById } = require('../services/orders.service');
+const { createOrder, createOrderItems, getOrderWithItems, getOrders, updateOrderById, getOrderByReference } = require('../services/orders.service');
 const { buildOrderNumber, buildExternalReference } = require('../utils/order');
+const {
+  FULFILLMENT_STATUSES,
+  buildOrderUpdatesFromFulfillment,
+  appendOrderLog,
+} = require('../utils/orderFulfillment');
 
 const getAllOrders = asyncHandler(async (req, res) => {
   const limit = parseInt(req.query.limit, 10) || 50;
@@ -51,6 +56,15 @@ const createManualOrder = asyncHandler(async (req, res) => {
       items_count: payload.items.reduce((sum, item) => sum + item.quantity, 0),
       subtotal_amount: payload.subtotal,
       total_amount: payload.total,
+      fulfillment_status: 'aguardando_pagamento',
+      order_logs: [{
+        id: '1',
+        action: 'Pedido criado',
+        message: 'Pedido criado',
+        user: 'Sistema',
+        created_at: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+      }],
       raw_checkout_payload: payload.rawPayload
     }
   });
@@ -121,15 +135,41 @@ const getOrderPublicStatus = asyncHandler(async (req, res) => {
 });
 
 const updateOrderStatus = asyncHandler(async (req, res) => {
-    const { status, tracking_code, tracking_url } = req.body;
-    const updates = {};
-    if (status !== undefined) updates.status = status;
-    if (tracking_code !== undefined) updates.tracking_code = tracking_code;
-    if (tracking_url !== undefined) updates.tracking_url = tracking_url;
-    
-    const order = await updateOrderById(req.params.id, updates);
-    return res.json(order);
-  });
+  const { status, tracking_code, tracking_url, log_message, log_user } = req.body;
+
+  if (!status || !FULFILLMENT_STATUSES.has(status)) {
+    return res.status(400).json({
+      message: 'Status operacional inválido.',
+    });
+  }
+
+  const existingOrder = await getOrderByReference(req.params.id);
+  if (!existingOrder) {
+    return res.status(404).json({ message: 'Pedido não encontrado.' });
+  }
+
+  const updates = buildOrderUpdatesFromFulfillment(status, existingOrder);
+
+  if (tracking_code !== undefined && tracking_code !== null && String(tracking_code).trim()) {
+    updates.shipping_tracking_code = String(tracking_code).trim();
+  }
+
+  if (tracking_url !== undefined && tracking_url !== null && String(tracking_url).trim()) {
+    updates.shipping_label_url = String(tracking_url).trim();
+  }
+
+  if (log_message) {
+    updates.order_logs = appendOrderLog(existingOrder.order_logs, {
+      action: log_message,
+      message: log_message,
+      user: log_user || 'Operador',
+    });
+  }
+
+  const order = await updateOrderById(existingOrder.id, updates);
+  const orderWithItems = await getOrderWithItems(order.id);
+  return res.json(orderWithItems || order);
+});
 
 module.exports = {
   getAllOrders,

@@ -62,7 +62,16 @@ async function createCheckout({ payload }) {
       items_count: payload.items.reduce((sum, item) => sum + item.quantity, 0),
       subtotal_amount: payload.subtotal,
       total_amount: payload.total,
-      raw_checkout_payload: payload.rawPayload
+      raw_checkout_payload: payload.rawPayload,
+      fulfillment_status: 'aguardando_pagamento',
+      order_logs: [{
+        id: '1',
+        action: 'Pedido criado',
+        message: 'Pedido criado via checkout',
+        user: 'Sistema',
+        created_at: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+      }],
     }
   });
 

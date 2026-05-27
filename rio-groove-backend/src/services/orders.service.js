@@ -67,7 +67,7 @@ async function getOrderByReference(reference) {
   const ref = String(reference || '').trim();
   if (!ref) return null;
 
-  let query = supabase.from('orders').select('*').limit(1);
+  let query = supabase.from('orders').select('*, order_items(*)').limit(1);
 
   if (/^[0-9a-fA-F-]{36}$/.test(ref)) {
     query = query.or(`id.eq.${ref},external_reference.eq.${ref},order_number.eq.${ref}`);
@@ -86,7 +86,7 @@ async function getOrders(options = {}) {
   
   const { data, error, count } = await supabase
     .from('orders')
-    .select('*', { count: 'exact' })
+    .select('*, order_items(*)', { count: 'exact' })
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
 
@@ -109,8 +109,8 @@ async function getOrderWithItems(reference) {
   const order = await getOrderByReference(reference);
   if (!order) return null;
 
-  const items = await getOrderItems(order.id);
-  return { ...order, items };
+  const items = order.order_items || await getOrderItems(order.id);
+  return { ...order, items, order_items: items };
 }
 
 async function registerWebhookEvent({ provider, topic, action, resourceId, payload }) {
