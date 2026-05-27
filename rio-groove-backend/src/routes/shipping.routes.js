@@ -9,6 +9,8 @@ const {
 
 const router = express.Router();
 
+// Loja (checkout público) — sem auth; admin continua com Bearer
+router.post('/api/shipping/quote/public', shippingQuote);
 router.post('/api/shipping/quote', requireAdminAuth, shippingQuote);
 router.post('/api/shipping/purchase', requireAdminAuth, purchaseOrderShipping);
 router.post('/api/shipping/label', requireAdminAuth, generateOrderShippingLabel);

@@ -84,6 +84,17 @@ function validateCheckoutPayload(body = {}) {
   if (shipping.price < 0) {
     errors.push('Valor de frete inválido.');
   }
+  if (!shipping.id) {
+    errors.push('Selecione uma opção de frete.');
+  }
+
+  const pkg = body.package || {};
+  const packageDims = {
+    weight: Number(pkg.weight || body.weight || 0.35),
+    height: Number(pkg.height || body.height || 5),
+    width: Number(pkg.width || body.width || 30),
+    length: Number(pkg.length || body.length || 25),
+  };
 
   const subtotal = roundMoney(items.reduce((sum, item) => sum + item.lineTotal, 0));
   const total = roundMoney(subtotal + shipping.price);
@@ -102,6 +113,7 @@ function validateCheckoutPayload(body = {}) {
       customer,
       address,
       shipping,
+      package: packageDims,
       subtotal,
       total,
       external_reference: externalReference,
