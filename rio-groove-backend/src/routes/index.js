@@ -10,6 +10,7 @@ const collectionsRoutes = require('./collections.routes');
 const productsRoutes = require('./products.routes');
 const uploadRoutes = require('./upload.routes');
 const stockRoutes = require('./stock.routes');
+const analyticsRoutes = require('./analytics.routes');
 
 const router = express.Router();
 
@@ -24,5 +25,6 @@ router.use(collectionsRoutes);
 router.use(productsRoutes);
 router.use(uploadRoutes);
 router.use(stockRoutes);
+router.use(analyticsRoutes);
 
 module.exports = router;
