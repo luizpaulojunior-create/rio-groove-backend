@@ -1,49 +1,26 @@
 const express = require('express');
 const cors = require('cors');
-const env = require('./config/env');
 const routes = require('./routes');
 const errorHandler = require('./middlewares/error-handler');
 const requestId = require('./middlewares/request-id');
+const { buildAllowedOrigins, isOriginAllowed } = require('./utils/cors-origin');
 
 const app = express();
 
-const defaultOrigins = [
-  'https://riogroovemovimentos.com.br',
-  'https://store.riogroovemovimentos.com.br',
-  'https://admin.riogroovemovimentos.com.br'
-];
-
-const envOrigins = [
-  process.env.FRONTEND_URL,
-  process.env.STORE_URL,
-  process.env.ADMIN_URL
-].filter(Boolean);
-
-const additionalOrigins = (process.env.ADDITIONAL_ALLOWED_ORIGINS || '')
-  .split(',')
-  .map(origin => origin.trim())
-  .filter(Boolean);
-
-const allowedOrigins = [...new Set([
-  ...defaultOrigins,
-  ...envOrigins,
-  ...additionalOrigins
-])];
+const allowedOrigins = buildAllowedOrigins(process.env);
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // Permite requests sem origin (como health checks do Render ou server-to-server)
+    const allowed = isOriginAllowed(origin, allowedOrigins);
+
     if (!origin) {
       console.log('[CORS] Origin allowed (no origin / server-to-server)');
       return callback(null, true);
     }
 
-    // Verifica se a origin está na lista exata, é um subdomínio do pages.dev, ou qualquer localhost
-    const isAllowed = allowedOrigins.includes(origin) || /\.pages\.dev$/.test(origin) || /^http:\/\/localhost:\d+$/.test(origin);
-    
-    console.log(`[CORS] Request from Origin: ${origin} | Allowed: ${isAllowed}`);
-    
-    if (isAllowed) {
+    console.log(`[CORS] Request from Origin: ${origin} | Allowed: ${allowed}`);
+
+    if (allowed) {
       callback(null, true);
     } else {
       console.log(`[CORS] Blocked by CORS: ${origin}`);

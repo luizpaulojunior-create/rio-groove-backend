@@ -1,5 +1,5 @@
 const supabase = require('../lib/supabase');
-const { adjustStock } = require('./stock.service');
+const { decrementStockIfAvailable, incrementStock } = require('./stock.service');
 const { updateOrderById, getOrderByReference } = require('./orders.service');
 const { appendOrderLog } = require('../utils/orderFulfillment');
 
@@ -106,6 +106,41 @@ async function validateStockForItems(items = []) {
   return true;
 }
 
+async function reserveStockForOrder(order, items = []) {
+  const freshOrder = await getOrderByReference(order.id);
+  const target = freshOrder || order;
+
+  if (target?.stock_reserved_at || target?.stock_deducted_at) {
+    return { skipped: true, reason: 'Estoque já reservado para este pedido.' };
+  }
+
+  const stockItems = await loadActiveStockItems();
+  const requirements = buildRequirements(items, stockItems);
+  const reservations = [];
+
+  for (const { stockRow, quantity } of requirements.values()) {
+    const updated = await decrementStockIfAvailable(
+      stockRow.id,
+      quantity,
+      `Reserva checkout — pedido ${target.order_number || target.id}`,
+    );
+    reservations.push({ stockId: stockRow.id, quantity, remaining: updated.quantity });
+  }
+
+  if (reservations.length > 0) {
+    await updateOrderById(target.id, {
+      stock_reserved_at: new Date().toISOString(),
+      order_logs: appendOrderLog(target.order_logs, {
+        action: 'Estoque reservado',
+        message: `Reserva automática de ${reservations.length} variante(s) no checkout.`,
+        user: 'Sistema',
+      }),
+    });
+  }
+
+  return { skipped: false, reservations };
+}
+
 async function deductStockForOrder(order, items = []) {
   const freshOrder = await getOrderByReference(order.id);
   const target = freshOrder || order;
@@ -114,15 +149,27 @@ async function deductStockForOrder(order, items = []) {
     return { skipped: true, reason: 'Estoque já baixado anteriormente.' };
   }
 
+  if (target?.stock_reserved_at) {
+    await updateOrderById(target.id, {
+      stock_deducted_at: new Date().toISOString(),
+      order_logs: appendOrderLog(target.order_logs, {
+        action: 'Estoque baixado',
+        message: 'Reserva convertida em baixa após pagamento aprovado.',
+        user: 'Sistema',
+      }),
+    });
+    return { skipped: false, fromReservation: true };
+  }
+
   const stockItems = await loadActiveStockItems();
   const requirements = buildRequirements(items, stockItems);
   const deductions = [];
 
   for (const { stockRow, quantity } of requirements.values()) {
-    const updated = await adjustStock(
+    const updated = await decrementStockIfAvailable(
       stockRow.id,
-      -quantity,
-      `Baixa automática — pedido ${target.order_number || target.id}`
+      quantity,
+      `Baixa automática — pedido ${target.order_number || target.id}`,
     );
     deductions.push({ stockId: stockRow.id, quantity, remaining: updated.quantity });
   }
@@ -130,6 +177,7 @@ async function deductStockForOrder(order, items = []) {
   if (deductions.length > 0) {
     await updateOrderById(target.id, {
       stock_deducted_at: new Date().toISOString(),
+      stock_reserved_at: target.stock_reserved_at || new Date().toISOString(),
       order_logs: appendOrderLog(target.order_logs, {
         action: 'Estoque baixado',
         message: `Baixa automática de ${deductions.length} variante(s) após pagamento aprovado.`,
@@ -145,8 +193,8 @@ async function restoreStockForOrder(order, items = []) {
   const freshOrder = await getOrderByReference(order.id);
   const target = freshOrder || order;
 
-  if (!target?.stock_deducted_at) {
-    return { skipped: true, reason: 'Estoque não havia sido baixado.' };
+  if (!target?.stock_deducted_at && !target?.stock_reserved_at) {
+    return { skipped: true, reason: 'Estoque não havia sido reservado ou baixado.' };
   }
 
   const stockItems = await loadActiveStockItems();
@@ -154,16 +202,17 @@ async function restoreStockForOrder(order, items = []) {
   const restorations = [];
 
   for (const { stockRow, quantity } of requirements.values()) {
-    const updated = await adjustStock(
+    const updated = await incrementStock(
       stockRow.id,
       quantity,
-      `Devolução automática — pedido ${target.order_number || target.id}`
+      `Devolução automática — pedido ${target.order_number || target.id}`,
     );
     restorations.push({ stockId: stockRow.id, quantity, remaining: updated.quantity });
   }
 
   await updateOrderById(target.id, {
     stock_deducted_at: null,
+    stock_reserved_at: null,
     order_logs: appendOrderLog(target.order_logs, {
       action: 'Estoque devolvido',
       message: `Devolução automática de ${restorations.length} variante(s).`,
@@ -176,6 +225,7 @@ async function restoreStockForOrder(order, items = []) {
 
 module.exports = {
   validateStockForItems,
+  reserveStockForOrder,
   deductStockForOrder,
   restoreStockForOrder,
   findStockMatch,

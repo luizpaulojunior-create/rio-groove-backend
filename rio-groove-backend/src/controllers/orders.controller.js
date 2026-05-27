@@ -8,6 +8,10 @@ const {
   appendOrderLog,
 } = require('../utils/orderFulfillment');
 const { restoreStockForOrder } = require('../services/stockCheckout.service');
+const {
+  verifyOrderPublicStatusAccess,
+  buildPublicOrderStatusResponse,
+} = require('../utils/order-public-status');
 
 const getAllOrders = asyncHandler(async (req, res) => {
   const limit = parseInt(req.query.limit, 10) || 50;
@@ -111,28 +115,12 @@ const getOrderPublicStatus = asyncHandler(async (req, res) => {
     return res.status(404).json({ message: 'Pedido não encontrado.' });
   }
 
-  return res.json({
-    orderId: order.id,
-    orderNumber: order.order_number,
-    externalReference: order.external_reference,
-    status: order.status,
-    paymentStatus: order.payment_status,
-    paymentProvider: order.payment_provider,
-    total: order.total_amount,
-    subtotal: order.subtotal_amount,
-    shippingAmount: order.shipping_amount,
-    shippingMethod: order.shipping_method,
-    paidAt: order.paid_at,
-    createdAt: order.created_at,
-    items: (order.items || []).map((item) => ({
-      productName: item.product_name,
-      quantity: item.quantity,
-      unitPrice: item.unit_price,
-      lineTotal: item.line_total,
-      color: item.color,
-      size: item.size,
-    })),
-  });
+  const access = verifyOrderPublicStatusAccess(order, req.query.email || req.query.customer_email);
+  if (!access.ok) {
+    return res.status(access.status).json({ message: access.message });
+  }
+
+  return res.json(buildPublicOrderStatusResponse(order));
 });
 
 const updateOrderStatus = asyncHandler(async (req, res) => {

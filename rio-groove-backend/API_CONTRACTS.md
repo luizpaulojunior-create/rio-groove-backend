@@ -39,8 +39,9 @@
 |--------|------|------------|-------|
 | GET | `/api/orders` | **admin** `orders.js` | Query: `limit`, `offset` |
 | POST | `/api/orders` | admin (manual) | Criação manual |
-| GET | `/api/orders/:reference` | admin | UUID, `external_reference` ou `order_number` |
-| PUT | `/api/orders/:id/status` | **admin** `orders.js` | Atualiza status |
+| GET | `/api/orders/:reference` | admin | UUID, `external_reference` ou `order_number` — **Bearer JWT admin** |
+| GET | `/api/orders/:reference/public-status?email=` | **storefront** `orders/index.ts` | Exige e-mail do pedido; retorna status sem PII extra |
+| PUT | `/api/orders/:id/status` | **admin** `orders.js` | Atualiza status — **Bearer JWT admin** |
 
 ---
 

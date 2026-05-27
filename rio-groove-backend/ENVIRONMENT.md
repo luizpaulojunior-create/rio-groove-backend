@@ -43,6 +43,7 @@
 | `MERCADO_PAGO_PUBLIC_KEY` | Checkout Pro |
 | `MERCADO_PAGO_ACCESS_TOKEN` | API Mercado Pago |
 | `MERCADO_PAGO_WEBHOOK_SECRET` | **Obrigatório em produção** — verifica `x-signature` nos webhooks MP |
+| `SENTRY_DSN` | Observabilidade opcional (Sentry) |
 | `STRIPE_SECRET_KEY` | Checkout Stripe (opcional) |
 | `STRIPE_WEBHOOK_SECRET` | Verificação de webhook Stripe |
 

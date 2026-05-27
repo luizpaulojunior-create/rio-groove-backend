@@ -74,9 +74,10 @@ Ver [API_CONTRACTS.md](./API_CONTRACTS.md).
 
 ### Autenticação
 
-- **Sem middleware JWT/API key** nas rotas admin/CRUD
-- CORS allowlist em `src/app.js`
+- Rotas admin/operacionais exigem **JWT Supabase** (`Authorization: Bearer`) + row em `admins` (`requireAdminAuth`)
+- CORS allowlist em `src/utils/cors-origin.js` — produção Pages só para projetos conhecidos
 - Stripe webhook: verificação de assinatura
+- Mercado Pago webhook: `x-signature` quando `MERCADO_PAGO_WEBHOOK_SECRET` configurado
 - Melhor Envio: OAuth em `/auth/melhor-envio/*`
 
 ### Deploy

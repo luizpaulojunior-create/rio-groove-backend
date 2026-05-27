@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "lint": "node --check src/app.js && node --check src/server.js"
+    "lint": "node --check src/app.js && node --check src/server.js",
+    "test": "node --test --require ./test/setup-env.js test/*.test.js"
   },
   "engines": {
     "node": ">=20"

@@ -5,13 +5,14 @@ const {
   createOrder,
   createOrderItems,
   deleteOrder,
-  updateOrderById
+  updateOrderById,
+  getOrderWithItems,
 } = require('./orders.service');
 const {
   buildOrderNumber,
   onlyDigits
 } = require('../utils/order');
-const { validateStockForItems } = require('./stockCheckout.service');
+const { validateStockForItems, reserveStockForOrder, restoreStockForOrder } = require('./stockCheckout.service');
 const { resolveAffiliate, upsertNewsletterSubscriber } = require('./growth.service');
 
 async function createCheckout({ payload }) {
@@ -108,23 +109,30 @@ async function createCheckout({ payload }) {
 
   console.log('[Checkout] Pedido salvo no banco:', order?.id);
 
+  const orderItemsPayload = payload.items.map((item) => ({
+    order_id: order.id,
+    product_name: item.name || item.productName,
+    product_slug: item.slug || null,
+    variant_id: null,
+    sku: item.sku || null,
+    image_url: item.image || item.imageUrl || null,
+    color: item.color || null,
+    size: item.size || null,
+    quantity: item.quantity,
+    unit_price: item.unit_price || item.unitPrice,
+    line_total: item.lineTotal || item.line_total || ((item.quantity || 1) * (item.unit_price || item.unitPrice || 0)),
+    metadata_json: item.raw || item
+  }));
+
   try {
-    await createOrderItems(
-      payload.items.map((item) => ({
-        order_id: order.id,
-        product_name: item.name || item.productName,
-        product_slug: item.slug || null,
-        variant_id: null,
-        sku: item.sku || null,
-        image_url: item.image || item.imageUrl || null,
-        color: item.color || null,
-        size: item.size || null,
-        quantity: item.quantity,
-        unit_price: item.unit_price || item.unitPrice,
-        line_total: item.lineTotal || item.line_total || ((item.quantity || 1) * (item.unit_price || item.unitPrice || 0)),
-        metadata_json: item.raw || item
-      }))
-    );
+    await createOrderItems(orderItemsPayload);
+    await reserveStockForOrder(order, payload.items);
+  } catch (stockError) {
+    await deleteOrder(order.id);
+    throw stockError;
+  }
+
+  try {
 
     const preferenceItems = payload.items.map((item) => ({
       title: `${item.productName} · ${item.color} · Tam ${item.size}`,
@@ -287,7 +295,15 @@ async function createCheckout({ payload }) {
     };
   } catch (error) {
     console.error('[Checkout] Erro capturado:', error);
-    await deleteOrder(order.id);
+    if (order?.id) {
+      try {
+        const orderWithItems = await getOrderWithItems(order.id);
+        await restoreStockForOrder(orderWithItems, orderWithItems?.items || payload.items);
+      } catch (restoreError) {
+        console.error('[Checkout] Falha ao devolver estoque reservado:', restoreError.message);
+      }
+      await deleteOrder(order.id);
+    }
     throw error;
   }
 }

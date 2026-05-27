@@ -92,6 +92,45 @@ const adjustStock = async (id, quantity, reason) => {
   return data;
 };
 
+/**
+ * Decremento atômico via RPC `decrement_stock_if_available` (migration 18).
+ * Fallback não-atômico se a RPC ainda não existir no Supabase.
+ */
+const decrementStockIfAvailable = async (id, quantity, reason) => {
+  const qty = Number(quantity);
+  if (!Number.isInteger(qty) || qty <= 0) {
+    throw new Error('Quantidade inválida para reserva de estoque.');
+  }
+
+  const { data, error } = await supabase.rpc('decrement_stock_if_available', {
+    p_stock_id: id,
+    p_quantity: qty,
+  });
+
+  if (error) {
+    const missingRpc =
+      error.code === 'PGRST202' ||
+      /decrement_stock_if_available/i.test(error.message || '');
+
+    if (missingRpc) {
+      console.warn('[Stock] RPC decrement_stock_if_available ausente — usando fallback não-atômico.');
+      return adjustStock(id, -qty, reason);
+    }
+    throw error;
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) {
+    throw new Error('Estoque insuficiente para concluir a reserva.');
+  }
+
+  return row;
+};
+
+const incrementStock = async (id, quantity, reason) => {
+  return adjustStock(id, quantity, reason);
+};
+
 const cleanupLegacyInvalidStockItems = async () => {
   const { data: rows, error: fetchErr } = await supabase
     .from('stock_items')
@@ -217,5 +256,7 @@ module.exports = {
   updateStockItem,
   deleteStockItem,
   adjustStock,
+  decrementStockIfAvailable,
+  incrementStock,
   seedStockItems
 };
