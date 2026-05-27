@@ -16,6 +16,8 @@ const {
   sendAdminNotification
 } = require('./notifications.service');
 const { mapMercadoPagoPaymentStatus } = require('../utils/order');
+const { deductStockForOrder, restoreStockForOrder } = require('./stockCheckout.service');
+const { incrementCouponUsage } = require('./coupons.service');
 
 const MP_API_BASE = 'https://api.mercadopago.com';
 
@@ -66,9 +68,18 @@ async function processStripeWebhook(req) {
       status: 'paid',
       payment_status: 'approved',
       paid_at: new Date().toISOString(),
+      fulfillment_status: 'pagamento_aprovado',
       stripe_payment_intent_id: session.payment_intent || session.id,
       payment_payload: session
     });
+
+    try {
+      const orderWithItems = await getOrderWithItems(existingOrder.external_reference);
+      await deductStockForOrder(orderWithItems, orderWithItems.items || []);
+      await incrementCouponUsage(orderWithItems.coupon_id, orderWithItems.coupon_code);
+    } catch (error) {
+      console.error('[PaymentsService] Falha na baixa de estoque/cupom (Stripe):', error.message);
+    }
 
     processingWebhooks.delete(externalReference);
 
@@ -296,7 +307,10 @@ async function processMercadoPagoWebhook(req) {
   }
 
   const statusMap = mapMercadoPagoPaymentStatus(payment.status);
-  const updatedOrder = await updateOrderByExternalReference(existingOrder.external_reference, {
+  const isCancelled = ['cancelled', 'rejected', 'refunded', 'charged_back'].includes(payment.status);
+  const wasNotCancelled = !['cancelled', 'rejected', 'refunded', 'charged_back'].includes(existingOrder.mercado_pago_status);
+
+  const orderUpdates = {
     status: statusMap.orderStatus,
     payment_status: statusMap.paymentStatus,
     mercado_pago_payment_id: payment.id ? String(payment.id) : existingOrder.mercado_pago_payment_id,
@@ -304,15 +318,24 @@ async function processMercadoPagoWebhook(req) {
     mercado_pago_status: payment.status || null,
     mercado_pago_status_detail: payment.status_detail || null,
     paid_at: payment.status === 'approved' ? new Date().toISOString() : existingOrder.paid_at,
-    payment_payload: payment
-  });
+    payment_payload: payment,
+  };
 
-  const isCancelled = ['cancelled', 'rejected', 'refunded', 'charged_back'].includes(payment.status);
-  const wasNotCancelled = !['cancelled', 'rejected', 'refunded', 'charged_back'].includes(existingOrder.mercado_pago_status);
+  if (payment.status === 'approved') {
+    orderUpdates.fulfillment_status = 'pagamento_aprovado';
+  } else if (isCancelled) {
+    orderUpdates.fulfillment_status = 'cancelado';
+  }
 
-  // Fase 1: estoque legado congelado — sem restauração automática via product_variants/products.stock.
+  const updatedOrder = await updateOrderByExternalReference(existingOrder.external_reference, orderUpdates);
+
   if (isCancelled && wasNotCancelled) {
-    console.log('[PaymentsService] Pagamento cancelado/rejeitado (estoque legado não alterado — fase 1)');
+    try {
+      const orderWithItems = await getOrderWithItems(existingOrder.external_reference);
+      await restoreStockForOrder(orderWithItems, orderWithItems.items || []);
+    } catch (error) {
+      console.error('[PaymentsService] Falha ao devolver estoque:', error.message);
+    }
   }
 
   let shipping_type = String(metadata.shipping_type || '').toLowerCase().trim();
@@ -344,7 +367,12 @@ async function processMercadoPagoWebhook(req) {
         console.error('[AdminEmail] erro:', error);
       }
 
-      console.log('[PaymentsService] Estoque legado ignorado na aprovação (fase 1 — baixa via stock_items na fase 2)');
+      try {
+        await deductStockForOrder(orderWithItems, orderWithItems.items || []);
+        await incrementCouponUsage(orderWithItems.coupon_id, orderWithItems.coupon_code);
+      } catch (error) {
+        console.error('[PaymentsService] Falha na baixa de estoque/cupom:', error.message);
+      }
     }
 
     const orderId = updatedOrder.id;

@@ -555,6 +555,118 @@ async function ensureShippingPurchased(order, shipmentId) {
   return purchaseShipping(order, shipmentId);
 }
 
+const ME_STATUS_TO_FULFILLMENT = {
+  pending: 'preparando_envio',
+  released: 'etiqueta_gerada',
+  posted: 'postado',
+  delivered: 'entregue',
+  undelivered: 'em_transito',
+  suspended: 'em_transito',
+  canceled: 'cancelado',
+};
+
+function mapMelhorEnvioStatusToFulfillment(meStatus) {
+  const key = String(meStatus || '').toLowerCase().trim();
+  return ME_STATUS_TO_FULFILLMENT[key] || null;
+}
+
+async function fetchMelhorEnvioTracking(shipmentIds = []) {
+  const ids = [...new Set(shipmentIds.filter(Boolean).map(String))];
+  if (!ids.length) return {};
+
+  const token = await getValidToken();
+  if (!token) {
+    throw new Error('Token do Melhor Envio não configurado no backend.');
+  }
+
+  const apiUrl = env.melhorEnvioSandbox
+    ? 'https://sandbox.melhorenvio.com.br/api/v2/me/shipment/tracking'
+    : 'https://melhorenvio.com.br/api/v2/me/shipment/tracking';
+
+  const response = await fetch(apiUrl, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      'User-Agent': getMelhorEnvioUserAgent(),
+    },
+    body: JSON.stringify({ orders: ids }),
+  });
+
+  const text = await response.text();
+  let payload = {};
+  try {
+    payload = text ? JSON.parse(text) : {};
+  } catch (error) {
+    throw new Error(`Resposta inválida do Melhor Envio (tracking): ${text}`);
+  }
+
+  if (!response.ok) {
+    throw new Error(payload?.message || payload?.error || `Melhor Envio tracking ${response.status}`);
+  }
+
+  return payload;
+}
+
+async function syncOrderTrackingFromMelhorEnvio(order) {
+  const shipmentId = order?.melhor_envio_shipment_id;
+  if (!shipmentId) {
+    return {
+      order,
+      synced: false,
+      reason: 'Pedido sem envio Melhor Envio.',
+    };
+  }
+
+  const trackingPayload = await fetchMelhorEnvioTracking([shipmentId]);
+  const shipmentData = trackingPayload[String(shipmentId)] || trackingPayload[shipmentId] || null;
+
+  if (!shipmentData) {
+    return {
+      order,
+      synced: false,
+      reason: 'Rastreio ainda indisponível no Melhor Envio.',
+      raw: trackingPayload,
+    };
+  }
+
+  const meStatus = shipmentData.status || shipmentData.situation || shipmentData.tracking?.status;
+  const trackingCode =
+    shipmentData.tracking ||
+    shipmentData.tracking_code ||
+    shipmentData.trackingCode ||
+    order.shipping_tracking_code ||
+    null;
+
+  const mappedFulfillment = mapMelhorEnvioStatusToFulfillment(meStatus);
+  const updates = {};
+
+  if (trackingCode && trackingCode !== order.shipping_tracking_code) {
+    updates.shipping_tracking_code = String(trackingCode);
+  }
+
+  if (mappedFulfillment && mappedFulfillment !== order.fulfillment_status) {
+    updates.fulfillment_status = mappedFulfillment;
+    updates.shipping_status = mappedFulfillment;
+  }
+
+  let updatedOrder = order;
+  if (Object.keys(updates).length > 0) {
+    const { updateOrderById } = require('./orders.service');
+    updatedOrder = await updateOrderById(order.id, updates);
+  }
+
+  return {
+    order: updatedOrder,
+    synced: true,
+    melhorEnvioStatus: meStatus,
+    fulfillmentStatus: mappedFulfillment || order.fulfillment_status,
+    trackingCode: trackingCode || order.shipping_tracking_code,
+    raw: shipmentData,
+  };
+}
+
 module.exports = {
   getShippingQuote,
   purchaseShipping,
@@ -567,4 +679,7 @@ module.exports = {
   resolveMelhorEnvioServiceId,
   ensureShippingPurchased,
   LABEL_READY_STATUSES,
+  fetchMelhorEnvioTracking,
+  syncOrderTrackingFromMelhorEnvio,
+  mapMelhorEnvioStatusToFulfillment,
 };

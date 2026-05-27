@@ -11,6 +11,7 @@ const {
   isPickupShippingMethod,
   resolveMelhorEnvioShipmentId,
   ensureShippingPurchased,
+  syncOrderTrackingFromMelhorEnvio,
 } = require('../services/shipping.service');
 const {
   getOrderWithItems,
@@ -276,17 +277,38 @@ const getShippingTracking = asyncHandler(async (req, res) => {
   const order = await loadOrderOr404(reference, res);
   if (!order) return;
 
+  let syncedOrder = order;
+  let syncMeta = { synced: false };
+
+  if (order.melhor_envio_shipment_id && !isPickupShippingMethod(order.shipping_method)) {
+    try {
+      const syncResult = await syncOrderTrackingFromMelhorEnvio(order);
+      syncedOrder = syncResult.order || order;
+      syncMeta = {
+        synced: syncResult.synced,
+        melhor_envio_status: syncResult.melhorEnvioStatus || null,
+        reason: syncResult.reason || null,
+      };
+    } catch (error) {
+      console.error('[Shipping] syncOrderTrackingFromMelhorEnvio', error.message);
+      syncMeta = { synced: false, reason: error.message };
+    }
+  }
+
+  const fulfillmentStatus = syncedOrder.fulfillment_status || order.fulfillment_status;
+
   return res.status(200).json({
-    order_id: order.id,
-    order_number: order.order_number,
-    external_reference: order.external_reference,
-    shipping_method: order.shipping_method,
-    shipping_provider: order.shipping_provider,
-    shipping_status: order.shipping_status,
-    fulfillment_status: order.fulfillment_status,
-    shipping_tracking_code: order.shipping_tracking_code,
-    shipping_label_url: order.shipping_label_url,
-    melhor_envio_shipment_id: order.melhor_envio_shipment_id
+    order_id: syncedOrder.id,
+    order_number: syncedOrder.order_number,
+    external_reference: syncedOrder.external_reference,
+    shipping_method: syncedOrder.shipping_method,
+    shipping_provider: syncedOrder.shipping_provider,
+    shipping_status: fulfillmentStatus,
+    fulfillment_status: fulfillmentStatus,
+    shipping_tracking_code: syncedOrder.shipping_tracking_code,
+    shipping_label_url: syncedOrder.shipping_label_url,
+    melhor_envio_shipment_id: syncedOrder.melhor_envio_shipment_id,
+    sync: syncMeta,
   });
 });
 

@@ -11,6 +11,7 @@ const {
   buildOrderNumber,
   onlyDigits
 } = require('../utils/order');
+const { validateStockForItems } = require('./stockCheckout.service');
 
 async function createCheckout({ payload }) {
   const orderId = randomUUID();
@@ -21,9 +22,7 @@ async function createCheckout({ payload }) {
     ? 'pickup'
     : 'shipping';
 
-  // Fase 1: estoque legado (products.stock / product_variants) congelado.
-  // Reserva/baixa real será implementada via stock_items na Fase 2+.
-  console.log('[Checkout] Estoque legado ignorado (fase 1 — reserva via stock_items na fase 2)');
+  await validateStockForItems(payload.items);
 
   console.log('[CHECKOUT BACKEND] Shipping recebido', payload.shipping);
   
@@ -61,6 +60,9 @@ async function createCheckout({ payload }) {
       notes: payload.address.notes || null,
       items_count: payload.items.reduce((sum, item) => sum + item.quantity, 0),
       subtotal_amount: payload.subtotal,
+      discount_amount: payload.discountAmount || 0,
+      coupon_code: payload.couponApplied?.code || null,
+      coupon_id: payload.couponApplied?.id || null,
       total_amount: payload.total,
       raw_checkout_payload: payload.rawPayload,
       fulfillment_status: 'aguardando_pagamento',
@@ -155,6 +157,7 @@ async function createCheckout({ payload }) {
         totals: {
           subtotal: payload.subtotal,
           shipping: payload.shipping.price,
+          discount: payload.discountAmount || 0,
           total: payload.total
         }
       };
@@ -249,6 +252,7 @@ async function createCheckout({ payload }) {
       totals: {
         subtotal: payload.subtotal,
         shipping: payload.shipping.price,
+        discount: payload.discountAmount || 0,
         total: payload.total
       }
     };

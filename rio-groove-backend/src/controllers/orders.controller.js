@@ -7,6 +7,7 @@ const {
   buildOrderUpdatesFromFulfillment,
   appendOrderLog,
 } = require('../utils/orderFulfillment');
+const { restoreStockForOrder } = require('../services/stockCheckout.service');
 
 const getAllOrders = asyncHandler(async (req, res) => {
   const limit = parseInt(req.query.limit, 10) || 50;
@@ -168,6 +169,15 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
 
   const order = await updateOrderById(existingOrder.id, updates);
   const orderWithItems = await getOrderWithItems(order.id);
+
+  if (status === 'cancelado') {
+    try {
+      await restoreStockForOrder(orderWithItems, orderWithItems.items || []);
+    } catch (error) {
+      console.error('[Orders] Falha ao devolver estoque no cancelamento:', error.message);
+    }
+  }
+
   return res.json(orderWithItems || order);
 });
 

@@ -2,6 +2,7 @@ const supabase = require('../lib/supabase');
 const { roundMoney } = require('../utils/money');
 const { onlyDigits } = require('../utils/order');
 const { getShippingQuote } = require('./shipping.service');
+const { validateAndApplyCoupon, normalizeCouponCode } = require('./coupons.service');
 
 const FREE_SHIPPING_THRESHOLD = 799.9;
 const PICKUP_ID = 'pickup-rio';
@@ -153,6 +154,35 @@ function resolveItemUnitPrice(product, item) {
   return basePrice;
 }
 
+function distributeDiscountAcrossItems(items, discountAmount) {
+  if (!discountAmount || discountAmount <= 0) return items;
+
+  const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
+  if (subtotal <= 0) return items;
+
+  const discount = Math.min(discountAmount, subtotal);
+  let allocated = 0;
+
+  return items.map((item, index) => {
+    let lineDiscount;
+    if (index === items.length - 1) {
+      lineDiscount = roundMoney(discount - allocated);
+    } else {
+      lineDiscount = roundMoney((item.lineTotal / subtotal) * discount);
+      allocated += lineDiscount;
+    }
+
+    const newLineTotal = roundMoney(Math.max(item.lineTotal - lineDiscount, 0));
+    const newUnitPrice = roundMoney(newLineTotal / item.quantity);
+
+    return {
+      ...item,
+      unitPrice: newUnitPrice,
+      lineTotal: newLineTotal,
+    };
+  });
+}
+
 /**
  * Substitui preços do cliente pelos preços do banco e valida frete Melhor Envio.
  */
@@ -186,14 +216,44 @@ async function applyServerSidePricing(payload) {
 
   const subtotal = roundMoney(items.reduce((sum, item) => sum + item.lineTotal, 0));
   const shipping = await resolveServerSideShipping(payload, subtotal);
-  const shippingPrice = roundMoney(shipping.price);
-  const total = roundMoney(subtotal + shippingPrice);
+  let shippingPrice = roundMoney(shipping.price);
+
+  const couponCode =
+    normalizeCouponCode(payload.metadata?.coupon_code || payload.rawPayload?.metadata?.coupon_code);
+
+  let discountAmount = 0;
+  let couponApplied = null;
+
+  if (couponCode) {
+    const couponResult = await validateAndApplyCoupon(couponCode, subtotal, shippingPrice);
+    discountAmount = couponResult.discountAmount;
+    shippingPrice = couponResult.shippingPrice;
+    couponApplied = {
+      id: couponResult.couponId,
+      code: couponResult.couponCode,
+      discountAmount,
+      freeShipping: couponResult.freeShipping,
+    };
+
+    if (couponResult.freeShipping) {
+      shipping.price = 0;
+    }
+  }
+
+  const pricedItems = distributeDiscountAcrossItems(items, discountAmount);
+  const pricedSubtotal = roundMoney(pricedItems.reduce((sum, item) => sum + item.lineTotal, 0));
+  const total = roundMoney(pricedSubtotal + shippingPrice);
 
   return {
     ...payload,
-    items,
-    shipping,
-    subtotal,
+    items: pricedItems,
+    shipping: {
+      ...shipping,
+      price: shippingPrice,
+    },
+    subtotal: pricedSubtotal,
+    discountAmount,
+    couponApplied,
     total,
   };
 }
@@ -201,4 +261,5 @@ async function applyServerSidePricing(payload) {
 module.exports = {
   applyServerSidePricing,
   isMelhorEnvioServiceId,
+  distributeDiscountAcrossItems,
 };

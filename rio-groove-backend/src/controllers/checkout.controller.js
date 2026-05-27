@@ -13,12 +13,23 @@ const checkout = asyncHandler(async (req, res) => {
     });
   }
 
-  const result = await createCheckout({ payload: await applyServerSidePricing(validation.data) });
+  try {
+    const pricedPayload = await applyServerSidePricing(validation.data);
+    const result = await createCheckout({ payload: pricedPayload });
 
-  return res.status(201).json({
-    message: 'Checkout criado com sucesso.',
-    ...result
-  });
+    return res.status(201).json({
+      message: 'Checkout criado com sucesso.',
+      ...result
+    });
+  } catch (error) {
+    const message = error?.message || 'Falha ao criar checkout.';
+    const isBusinessError =
+      /estoque|cupom|frete|retirada|CEP/i.test(message);
+
+    return res.status(isBusinessError ? 400 : 500).json({
+      message,
+    });
+  }
 });
 
 module.exports = {
