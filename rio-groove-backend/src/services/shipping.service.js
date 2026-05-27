@@ -330,9 +330,10 @@ async function printShippingLabel(shipmentId) {
       headers: {
         Accept: 'application/pdf, application/json',
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`
+        Authorization: `Bearer ${token}`,
+        'User-Agent': getMelhorEnvioUserAgent(),
       },
-      body: JSON.stringify({ shipment_id: shipmentId }),
+      body: JSON.stringify({ mode: 'private', orders: [shipmentId] }),
       signal: controller.signal
     });
 
@@ -514,11 +515,56 @@ function isPickupShippingMethod(shippingMethod) {
   return typeof shippingMethod === 'string' && /retirada|pickup|loja|presencial/i.test(shippingMethod);
 }
 
+function getMelhorEnvioUserAgent() {
+  const name = env.storeName || 'Rio Groove Admin';
+  const email = env.storeEmail || env.adminNotificationEmail || 'contato@riogroovemovimentos.com.br';
+  return `${name} (${email})`;
+}
+
+function resolveMelhorEnvioServiceId(order) {
+  const raw = order?.raw_checkout_payload || {};
+  const shipping = raw.shipping || {};
+  return shipping.id || shipping.service_id || null;
+}
+
+const LABEL_READY_STATUSES = new Set(['purchased', 'label_generated']);
+
+async function resolveMelhorEnvioShipmentId(order, createIfMissing = false) {
+  if (order?.melhor_envio_shipment_id) {
+    return String(order.melhor_envio_shipment_id);
+  }
+
+  if (!createIfMissing) {
+    return null;
+  }
+
+  const serviceId = resolveMelhorEnvioServiceId(order);
+  if (!serviceId || serviceId === 'null') {
+    throw new Error('Pedido sem envio vinculado ao Melhor Envio. Confirme o pagamento antes de gerar a etiqueta.');
+  }
+
+  const shipmentId = await createShipmentInCart(order, serviceId);
+  return String(shipmentId);
+}
+
+async function ensureShippingPurchased(order, shipmentId) {
+  if (LABEL_READY_STATUSES.has(order.shipping_status)) {
+    return null;
+  }
+
+  return purchaseShipping(order, shipmentId);
+}
+
 module.exports = {
   getShippingQuote,
   purchaseShipping,
   generateShippingLabel,
   printShippingLabel,
   isPickupShippingMethod,
-  createShipmentInCart
+  createShipmentInCart,
+  getMelhorEnvioUserAgent,
+  resolveMelhorEnvioShipmentId,
+  resolveMelhorEnvioServiceId,
+  ensureShippingPurchased,
+  LABEL_READY_STATUSES,
 };

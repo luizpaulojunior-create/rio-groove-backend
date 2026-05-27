@@ -6,9 +6,11 @@ const {
 } = require('../utils/validation');
 const {
   getShippingQuote,
-  purchaseShipping,
   generateShippingLabel,
-  isPickupShippingMethod
+  printShippingLabel,
+  isPickupShippingMethod,
+  resolveMelhorEnvioShipmentId,
+  ensureShippingPurchased,
 } = require('../services/shipping.service');
 const {
   getOrderWithItems,
@@ -17,6 +19,105 @@ const {
 const {
   sendOrderTrackingNotification
 } = require('../services/notifications.service');
+const {
+  buildOrderUpdatesFromFulfillment,
+  appendOrderLog,
+} = require('../utils/orderFulfillment');
+
+async function loadOrderOr404(reference, res) {
+  const order = await getOrderWithItems(reference);
+  if (!order) {
+    res.status(404).json({ message: 'Pedido não encontrado.' });
+    return null;
+  }
+  return order;
+}
+
+async function fulfillLabelForOrder(order, { notifyCustomer = true } = {}) {
+  if (isPickupShippingMethod(order.shipping_method)) {
+    throw new Error('Pedido com retirada presencial não requer etiqueta de envio.');
+  }
+
+  let shipmentId = await resolveMelhorEnvioShipmentId(order, true);
+  if (!shipmentId) {
+    throw new Error('Pedido sem envio vinculado ao Melhor Envio.');
+  }
+
+  if (!order.melhor_envio_shipment_id) {
+    await updateOrderById(order.id, {
+      melhor_envio_shipment_id: shipmentId,
+      shipping_status: 'processing',
+    });
+    order.melhor_envio_shipment_id = shipmentId;
+  }
+
+  await ensureShippingPurchased(order, shipmentId);
+
+  const labelResult = await generateShippingLabel(shipmentId);
+  const labelUrl = labelResult.labelUrl || labelResult.result?.url || labelResult.result?.label_url || null;
+  const trackingCode =
+    labelResult.trackingCode ||
+    labelResult.result?.tracking_code ||
+    labelResult.result?.trackingCode ||
+    order.shipping_tracking_code ||
+    '';
+  const trackingUrl =
+    labelResult.trackingUrl ||
+    labelResult.result?.tracking_url ||
+    labelResult.result?.trackingUrl ||
+    labelUrl ||
+    null;
+
+  let notificationResult = null;
+  if (notifyCustomer && trackingCode) {
+    notificationResult = await sendOrderTrackingNotification(order, {
+      carrier: order.shipping_provider,
+      trackingCode,
+      deadline: order.shipping_deadline,
+      trackingUrl,
+    });
+  }
+
+  const notificationStatus = notificationResult
+    ? [notificationResult.email?.status, notificationResult.whatsapp?.status].includes('sent')
+      ? 'sent'
+      : 'failed'
+    : order.shipping_notification_status;
+
+  const fulfillmentUpdates = buildOrderUpdatesFromFulfillment('etiqueta_gerada', order);
+  const logMessage = trackingCode
+    ? `Etiqueta gerada automaticamente. Rastreio: ${trackingCode}`
+    : 'Etiqueta gerada automaticamente via Melhor Envio';
+
+  await updateOrderById(order.id, {
+    ...fulfillmentUpdates,
+    shipping_status: 'label_generated',
+    shipping_label_url: labelUrl,
+    shipping_tracking_code: trackingCode,
+    shipping_label_generated_at: new Date().toISOString(),
+    shipping_notification_status: notificationStatus,
+    shipping_notification_sent_at: notificationResult ? new Date().toISOString() : order.shipping_notification_sent_at,
+    shipping_notification_log: notificationResult ? JSON.stringify(notificationResult) : order.shipping_notification_log,
+    shipping_email_status: notificationResult?.email?.status || order.shipping_email_status || 'skipped',
+    shipping_whatsapp_status: notificationResult?.whatsapp?.status || order.shipping_whatsapp_status || 'skipped',
+    order_logs: appendOrderLog(order.order_logs, {
+      action: logMessage,
+      message: logMessage,
+      user: 'Melhor Envio',
+    }),
+  });
+
+  const updatedOrder = await getOrderWithItems(order.id);
+
+  return {
+    labelResult,
+    notificationResult,
+    order: updatedOrder,
+    trackingCode,
+    labelUrl,
+    shipmentId,
+  };
+}
 
 const shippingQuote = asyncHandler(async (req, res) => {
   console.log('[MelhorEnvio] Cotação de frete requisitada', req.body);
@@ -47,12 +148,11 @@ const purchaseOrderShipping = asyncHandler(async (req, res) => {
     });
   }
 
-  const order = await getOrderWithItems(validation.data.reference);
-  if (!order) {
-    return res.status(404).json({ message: 'Pedido não encontrado.' });
-  }
+  const order = await loadOrderOr404(validation.data.reference, res);
+  if (!order) return;
 
-  if (!order.melhor_envio_shipment_id) {
+  const shipmentId = await resolveMelhorEnvioShipmentId(order, true);
+  if (!shipmentId) {
     return res.status(400).json({ message: 'Pedido não possui shipment_id do Melhor Envio.' });
   }
 
@@ -60,8 +160,9 @@ const purchaseOrderShipping = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Pedido com retirada presencial não requer compra de frete.' });
   }
 
-  const purchaseResult = await purchaseShipping(order, order.melhor_envio_shipment_id);
+  const purchaseResult = await ensureShippingPurchased(order, shipmentId);
   const updatedOrder = await updateOrderById(order.id, {
+    melhor_envio_shipment_id: shipmentId,
     shipping_status: 'purchased',
     shipping_purchased_at: new Date().toISOString()
   });
@@ -79,41 +180,90 @@ const generateOrderShippingLabel = asyncHandler(async (req, res) => {
     });
   }
 
-  const order = await getOrderWithItems(validation.data.reference);
-  if (!order) {
-    return res.status(404).json({ message: 'Pedido não encontrado.' });
+  const order = await loadOrderOr404(validation.data.reference, res);
+  if (!order) return;
+
+  try {
+    const result = await fulfillLabelForOrder(order);
+    return res.status(200).json(result);
+  } catch (error) {
+    return res.status(400).json({ message: error.message || 'Falha ao gerar etiqueta.' });
+  }
+});
+
+const fulfillOrderShippingLabel = asyncHandler(async (req, res) => {
+  const validation = validateOrderReferencePayload(req.body || {});
+
+  if (!validation.valid) {
+    return res.status(400).json({
+      message: 'Referência de pedido inválida.',
+      errors: validation.errors
+    });
   }
 
-  if (!order.melhor_envio_shipment_id) {
-    return res.status(400).json({ message: 'Pedido não possui shipment_id do Melhor Envio.' });
+  const order = await loadOrderOr404(validation.data.reference, res);
+  if (!order) return;
+
+  try {
+    const result = await fulfillLabelForOrder(order);
+    return res.status(200).json({
+      message: 'Etiqueta gerada com sucesso.',
+      ...result,
+    });
+  } catch (error) {
+    console.error('[Shipping] fulfillOrderShippingLabel', error);
+    return res.status(400).json({ message: error.message || 'Falha ao gerar etiqueta.' });
+  }
+});
+
+const downloadOrderShippingLabelPdf = asyncHandler(async (req, res) => {
+  const reference = normalizeString(req.params.id);
+
+  if (!reference) {
+    return res.status(400).json({ message: 'Referência de pedido inválida.' });
   }
 
-  const labelResult = await generateShippingLabel(order.melhor_envio_shipment_id);
-  const labelUrl = labelResult.result?.url || labelResult.result?.label_url || labelResult.labelUrl || null;
-  const trackingCode = labelResult.trackingCode || labelResult.result?.tracking_code || labelResult.result?.trackingCode || '';
-  const trackingUrl = labelResult.trackingUrl || labelResult.result?.tracking_url || labelResult.result?.trackingUrl || labelUrl || null;
+  const order = await loadOrderOr404(reference, res);
+  if (!order) return;
 
-  const notificationResult = await sendOrderTrackingNotification(order, {
-    carrier: order.shipping_provider,
-    trackingCode,
-    deadline: order.shipping_deadline,
-    trackingUrl
-  });
+  if (isPickupShippingMethod(order.shipping_method)) {
+    return res.status(400).json({ message: 'Pedido com retirada presencial não possui etiqueta.' });
+  }
 
-  const notificationStatus = [notificationResult.email?.status, notificationResult.whatsapp?.status].includes('sent') ? 'sent' : 'failed';
-  const updatedOrder = await updateOrderById(order.id, {
-    shipping_status: 'label_generated',
-    shipping_label_url: labelUrl,
-    shipping_tracking_code: trackingCode || order.shipping_tracking_code,
-    shipping_label_generated_at: new Date().toISOString(),
-    shipping_notification_status: notificationStatus,
-    shipping_notification_sent_at: new Date().toISOString(),
-    shipping_notification_log: JSON.stringify(notificationResult),
-    shipping_email_status: notificationResult.email?.status || 'skipped',
-    shipping_whatsapp_status: notificationResult.whatsapp?.status || 'skipped'
-  });
+  const shipmentId = order.melhor_envio_shipment_id || (await resolveMelhorEnvioShipmentId(order, false));
+  if (!shipmentId) {
+    return res.status(400).json({ message: 'Gere a etiqueta antes de baixar o PDF.' });
+  }
 
-  return res.status(200).json({ labelResult, notificationResult, order: updatedOrder });
+  try {
+    const printResult = await printShippingLabel(shipmentId);
+
+    if (printResult.pdf) {
+      const filename = `etiqueta-${order.order_number || order.id}.pdf`;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      return res.send(printResult.pdf);
+    }
+
+    const printUrl =
+      printResult.result?.url ||
+      printResult.result?.link ||
+      order.shipping_label_url;
+
+    if (printUrl) {
+      return res.status(200).json({
+        message: 'PDF indisponível. Use o link da etiqueta.',
+        labelUrl: printUrl,
+      });
+    }
+
+    return res.status(400).json({
+      message: 'Etiqueta ainda não disponível para impressão. Gere a etiqueta primeiro.',
+    });
+  } catch (error) {
+    console.error('[Shipping] downloadOrderShippingLabelPdf', error);
+    return res.status(400).json({ message: error.message || 'Falha ao baixar PDF da etiqueta.' });
+  }
 });
 
 const getShippingTracking = asyncHandler(async (req, res) => {
@@ -123,10 +273,8 @@ const getShippingTracking = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Referência de pedido inválida.' });
   }
 
-  const order = await getOrderWithItems(reference);
-  if (!order) {
-    return res.status(404).json({ message: 'Pedido não encontrado.' });
-  }
+  const order = await loadOrderOr404(reference, res);
+  if (!order) return;
 
   return res.status(200).json({
     order_id: order.id,
@@ -135,6 +283,7 @@ const getShippingTracking = asyncHandler(async (req, res) => {
     shipping_method: order.shipping_method,
     shipping_provider: order.shipping_provider,
     shipping_status: order.shipping_status,
+    fulfillment_status: order.fulfillment_status,
     shipping_tracking_code: order.shipping_tracking_code,
     shipping_label_url: order.shipping_label_url,
     melhor_envio_shipment_id: order.melhor_envio_shipment_id
@@ -145,5 +294,7 @@ module.exports = {
   shippingQuote,
   purchaseOrderShipping,
   generateOrderShippingLabel,
+  fulfillOrderShippingLabel,
+  downloadOrderShippingLabelPdf,
   getShippingTracking
 };
