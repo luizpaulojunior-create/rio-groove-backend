@@ -267,9 +267,8 @@ async function executeMelhorEnvioRequest(endpoint, body) {
 }
 
 async function purchaseShipping(order, shipmentId) {
-  const requestBody = await ensureShippingRequestBody(order, shipmentId);
   console.log('[ShippingService] Comprando frete para pedido', order.id, shipmentId);
-  const result = await executeMelhorEnvioRequest('/checkout', requestBody);
+  const result = await executeMelhorEnvioRequest('/checkout', { orders: [String(shipmentId)] });
   return {
     shipmentId: shipmentId,
     result
@@ -296,14 +295,28 @@ async function generateShippingLabel(shipmentId) {
   }
 
   console.log('[ShippingService] Gerando etiqueta para shipment', shipmentId);
-  const result = await executeMelhorEnvioRequest('/generate', { shipment_id: shipmentId });
-  const labelData = extractLabelData(result);
+  try {
+    const result = await executeMelhorEnvioRequest('/generate', { orders: [String(shipmentId)] });
+    const labelData = extractLabelData(result);
 
-  return {
-    shipmentId,
-    result,
-    ...labelData
-  };
+    return {
+      shipmentId,
+      result,
+      ...labelData
+    };
+  } catch (error) {
+    if (isAlreadyGeneratedMelhorEnvioError(error.message)) {
+      console.log('[ShippingService] Etiqueta já gerada no Melhor Envio.');
+      return {
+        shipmentId,
+        result: { alreadyGenerated: true },
+        trackingCode: '',
+        trackingUrl: '',
+        labelUrl: '',
+      };
+    }
+    throw error;
+  }
 }
 
 async function printShippingLabel(shipmentId) {
@@ -529,9 +542,39 @@ function resolveMelhorEnvioServiceId(order) {
 
 const LABEL_READY_STATUSES = new Set(['purchased', 'label_generated']);
 
+const ME_PURCHASED_STATUSES = new Set(['released', 'posted', 'delivered', 'undelivered', 'suspended']);
+
+function isMelhorEnvioShipmentUuid(value) {
+  const normalized = String(value || '').trim();
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(normalized);
+}
+
+function isAlreadyPurchasedMelhorEnvioError(message) {
+  const text = String(message || '').toLowerCase();
+  return (
+    text.includes('já comprad') ||
+    text.includes('ja comprad') ||
+    text.includes('already') ||
+    text.includes('already paid') ||
+    text.includes('já pago') ||
+    text.includes('ja pago')
+  );
+}
+
+function isAlreadyGeneratedMelhorEnvioError(message) {
+  const text = String(message || '').toLowerCase();
+  return (
+    text.includes('já gerad') ||
+    text.includes('ja gerad') ||
+    text.includes('already generated') ||
+    text.includes('already been generated')
+  );
+}
+
 async function resolveMelhorEnvioShipmentId(order, createIfMissing = false) {
-  if (order?.melhor_envio_shipment_id) {
-    return String(order.melhor_envio_shipment_id);
+  const stored = order?.melhor_envio_shipment_id;
+  if (stored && isMelhorEnvioShipmentUuid(stored)) {
+    return String(stored);
   }
 
   if (!createIfMissing) {
@@ -547,12 +590,39 @@ async function resolveMelhorEnvioShipmentId(order, createIfMissing = false) {
   return String(shipmentId);
 }
 
+async function isMelhorEnvioShipmentPurchased(shipmentId) {
+  try {
+    const trackingPayload = await fetchMelhorEnvioTracking([shipmentId]);
+    const shipmentData = trackingPayload[String(shipmentId)] || trackingPayload[shipmentId] || null;
+    if (!shipmentData) return false;
+
+    const meStatus = String(shipmentData.status || shipmentData.situation || '').toLowerCase();
+    return ME_PURCHASED_STATUSES.has(meStatus);
+  } catch (error) {
+    console.warn('[ShippingService] Falha ao consultar status ME antes da compra:', error.message);
+    return false;
+  }
+}
+
 async function ensureShippingPurchased(order, shipmentId) {
   if (LABEL_READY_STATUSES.has(order.shipping_status)) {
-    return null;
+    return { alreadyPurchased: true, shipmentId };
   }
 
-  return purchaseShipping(order, shipmentId);
+  if (await isMelhorEnvioShipmentPurchased(shipmentId)) {
+    return { alreadyPurchased: true, shipmentId };
+  }
+
+  try {
+    const purchaseResult = await purchaseShipping(order, shipmentId);
+    return { alreadyPurchased: false, shipmentId, purchaseResult };
+  } catch (error) {
+    if (isAlreadyPurchasedMelhorEnvioError(error.message)) {
+      console.log('[ShippingService] Frete já pago no Melhor Envio, seguindo para geração.');
+      return { alreadyPurchased: true, shipmentId };
+    }
+    throw error;
+  }
 }
 
 const ME_STATUS_TO_FULFILLMENT = {
@@ -678,6 +748,7 @@ module.exports = {
   resolveMelhorEnvioShipmentId,
   resolveMelhorEnvioServiceId,
   ensureShippingPurchased,
+  isMelhorEnvioShipmentUuid,
   LABEL_READY_STATUSES,
   fetchMelhorEnvioTracking,
   syncOrderTrackingFromMelhorEnvio,

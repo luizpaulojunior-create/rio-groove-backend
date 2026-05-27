@@ -57,7 +57,7 @@ async function createCheckout({ payload }) {
       affiliate_slug: affiliate?.slug || null,
       shipping_method: payload.shipping.label,
       shipping_provider: payload.shipping.provider || null,
-      melhor_envio_shipment_id: payload.shipping.id || null,
+      melhor_envio_shipment_id: null,
       shipping_amount: payload.shipping.price,
       shipping_deadline: payload.shipping.deadline || null,
       shipping_cep: payload.address.cep,

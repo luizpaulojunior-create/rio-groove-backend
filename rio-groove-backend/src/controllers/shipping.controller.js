@@ -12,6 +12,7 @@ const {
   resolveMelhorEnvioShipmentId,
   ensureShippingPurchased,
   syncOrderTrackingFromMelhorEnvio,
+  isMelhorEnvioShipmentUuid,
 } = require('../services/shipping.service');
 const {
   getOrderWithItems,
@@ -44,15 +45,28 @@ async function fulfillLabelForOrder(order, { notifyCustomer = true } = {}) {
     throw new Error('Pedido sem envio vinculado ao Melhor Envio.');
   }
 
-  if (!order.melhor_envio_shipment_id) {
+  if (!order.melhor_envio_shipment_id || !isMelhorEnvioShipmentUuid(order.melhor_envio_shipment_id)) {
     await updateOrderById(order.id, {
       melhor_envio_shipment_id: shipmentId,
-      shipping_status: 'processing',
+      shipping_status: order.shipping_status === 'label_generated' ? order.shipping_status : 'processing',
     });
     order.melhor_envio_shipment_id = shipmentId;
   }
 
-  await ensureShippingPurchased(order, shipmentId);
+  const purchaseResult = await ensureShippingPurchased(order, shipmentId);
+  if (purchaseResult && order.shipping_status !== 'label_generated') {
+    await updateOrderById(order.id, {
+      shipping_status: 'purchased',
+      shipping_purchased_at: order.shipping_purchased_at || new Date().toISOString(),
+    });
+    order.shipping_status = 'purchased';
+  }
+
+  try {
+    await syncOrderTrackingFromMelhorEnvio(order);
+  } catch (syncError) {
+    console.warn('[Shipping] sync antes de gerar etiqueta:', syncError.message);
+  }
 
   const labelResult = await generateShippingLabel(shipmentId);
   const labelUrl = labelResult.labelUrl || labelResult.result?.url || labelResult.result?.label_url || null;
@@ -237,7 +251,20 @@ const downloadOrderShippingLabelPdf = asyncHandler(async (req, res) => {
   }
 
   try {
-    const printResult = await printShippingLabel(shipmentId);
+    try {
+      await syncOrderTrackingFromMelhorEnvio(order);
+    } catch (syncError) {
+      console.warn('[Shipping] sync antes do PDF:', syncError.message);
+    }
+
+    let printResult;
+    try {
+      printResult = await printShippingLabel(shipmentId);
+    } catch (printError) {
+      console.warn('[Shipping] print falhou, tentando generate:', printError.message);
+      await generateShippingLabel(shipmentId);
+      printResult = await printShippingLabel(shipmentId);
+    }
 
     if (printResult.pdf) {
       const filename = `etiqueta-${order.order_number || order.id}.pdf`;

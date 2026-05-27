@@ -8,7 +8,8 @@ const {
 } = require('./orders.service');
 const {
   createShipmentInCart,
-  isPickupShippingMethod
+  isPickupShippingMethod,
+  isMelhorEnvioShipmentUuid,
 } = require('./shipping.service');
 const {
   sendOrderTrackingNotification,
@@ -196,6 +197,285 @@ function isPickupShipping(payment, merchantOrder, existingOrder) {
   return /pickup|retirada|presencial/i.test(labelSource);
 }
 
+async function applyMercadoPagoPaymentUpdate(payment, merchantOrder = null, options = {}) {
+  const metadata = payment.metadata || merchantOrder?.metadata || {};
+  console.log('[PaymentsService] Metadata encontrada', metadata);
+
+  const externalReference = getNotificationReference(payment, merchantOrder);
+  console.log('[PaymentsService] external_reference encontrado', externalReference);
+  if (!externalReference) {
+    console.warn('[PaymentsService] Retornando cedo: external_reference não encontrado');
+    return { ignored: true, reason: 'external_reference não encontrado.' };
+  }
+
+  if (!options.skipRaceGuard && processingWebhooks.has(externalReference)) {
+    console.log('[PaymentsService] Abortando webhook duplicado antes de qualquer side effect');
+    return { ignored: true, reason: 'Race condition prevenida. Webhook simultâneo.' };
+  }
+  if (!options.skipRaceGuard) {
+    processingWebhooks.add(externalReference);
+    setTimeout(() => processingWebhooks.delete(externalReference), 30000);
+  }
+
+  const existingOrder = await getOrderByReference(externalReference);
+  console.log('[PaymentsService] Pedido encontrado no banco', {
+    external_reference: externalReference,
+    orderId: existingOrder?.id,
+    status: existingOrder?.status
+  });
+  if (!existingOrder) {
+    if (!options.skipRaceGuard) processingWebhooks.delete(externalReference);
+    console.warn('[PaymentsService] Retornando cedo: pedido não encontrado no banco');
+    return { ignored: true, reason: 'Pedido não encontrado.' };
+  }
+
+  if (payment.status === 'approved' && existingOrder.status === 'paid') {
+    console.log('[PaymentsService] Pedido já processado anteriormente');
+    if (!options.skipRaceGuard) processingWebhooks.delete(externalReference);
+    return {
+      ignored: true,
+      reason: 'Pedido já processado anteriormente.'
+    };
+  }
+
+  const statusMap = mapMercadoPagoPaymentStatus(payment.status);
+  const isCancelled = ['cancelled', 'rejected', 'refunded', 'charged_back'].includes(payment.status);
+  const wasNotCancelled = !['cancelled', 'rejected', 'refunded', 'charged_back'].includes(existingOrder.mercado_pago_status);
+
+  const orderUpdates = {
+    status: statusMap.orderStatus,
+    payment_status: statusMap.paymentStatus,
+    mercado_pago_payment_id: payment.id ? String(payment.id) : existingOrder.mercado_pago_payment_id,
+    mercado_pago_merchant_order_id: payment.order?.id ? String(payment.order.id) : existingOrder.mercado_pago_merchant_order_id,
+    mercado_pago_status: payment.status || null,
+    mercado_pago_status_detail: payment.status_detail || null,
+    paid_at: payment.status === 'approved' ? new Date().toISOString() : existingOrder.paid_at,
+    payment_payload: payment,
+  };
+
+  if (payment.status === 'approved') {
+    orderUpdates.fulfillment_status = 'pagamento_aprovado';
+  } else if (isCancelled) {
+    orderUpdates.fulfillment_status = 'cancelado';
+  }
+
+  const updatedOrder = await updateOrderByExternalReference(existingOrder.external_reference, orderUpdates);
+
+  if (isCancelled && wasNotCancelled) {
+    try {
+      const orderWithItems = await getOrderWithItems(existingOrder.external_reference);
+      await restoreStockForOrder(orderWithItems, orderWithItems.items || []);
+    } catch (error) {
+      console.error('[PaymentsService] Falha ao devolver estoque:', error.message);
+    }
+  }
+
+  let shipping_type = String(metadata.shipping_type || '').toLowerCase().trim();
+  if (!shipping_type && updatedOrder && updatedOrder.shipping_method) {
+    shipping_type = isPickupShippingMethod(updatedOrder.shipping_method) ? 'pickup' : 'shipping';
+  }
+  const pickupOrder = isPickupShipping(payment, merchantOrder, updatedOrder);
+  console.log('[PaymentsService] shipping_type identificado', {
+    shipping_type,
+    pickupOrder
+  });
+  const hasAlreadyNotified = Boolean(updatedOrder.shipping_notification_sent_at);
+
+  if (payment.status === 'approved') {
+    console.log('[PaymentsService] Pedido marcado como paid antes das notificações');
+
+    const orderWithItems = await getOrderWithItems(existingOrder.external_reference);
+
+    if (!existingOrder.paid_at) {
+      console.log('[AdminEmail] envio iniciado');
+      console.log('[AdminEmail] pedido:', updatedOrder.id);
+      console.log('[AdminEmail] método:', updatedOrder.shipping_method);
+      try {
+        await sendAdminNotification(orderWithItems);
+        console.log('[AdminEmail] email enviado');
+      } catch (error) {
+        console.error('[AdminEmail] erro:', error);
+      }
+
+      try {
+        await deductStockForOrder(orderWithItems, orderWithItems.items || []);
+        await incrementCouponUsage(orderWithItems.coupon_id, orderWithItems.coupon_code);
+      } catch (error) {
+        console.error('[PaymentsService] Falha na baixa de estoque/cupom:', error.message);
+      }
+    }
+
+    const orderId = updatedOrder.id;
+    if (shipping_type === 'shipping') {
+      console.log('[PaymentsService] Fluxo Melhor Envio ativado');
+      console.log('[PaymentsService] Criando envio Melhor Envio para pedido', orderId);
+      if (!updatedOrder.melhor_envio_shipment_id || !isMelhorEnvioShipmentUuid(updatedOrder.melhor_envio_shipment_id)) {
+        try {
+          const serviceId = metadata.shipping_service_id ||
+                            existingOrder.raw_checkout_payload?.shipping?.id ||
+                            existingOrder.raw_checkout_payload?.shipping?.service_id ||
+                            null;
+
+          console.log('[MelhorEnvio] Service ID recuperado:', {
+            serviceId,
+            fromMetadata: metadata.shipping_service_id,
+            fromPayload: existingOrder.raw_checkout_payload?.shipping?.id,
+          });
+
+          if (!serviceId || serviceId === 'null') {
+            throw new Error(`Nenhum ID de serviço de frete válido encontrado para o pedido ${orderId}`);
+          }
+
+          console.log(`[MelhorEnvio] Criando envio no carrinho com serviceId: ${serviceId}`);
+          const shipmentId = await createShipmentInCart(orderWithItems, serviceId);
+          console.log('[MelhorEnvio] Envio criado com sucesso', { shipmentId });
+
+          await updateOrderByExternalReference(existingOrder.external_reference, {
+            melhor_envio_shipment_id: String(shipmentId),
+            shipping_status: 'processing'
+          });
+        } catch (error) {
+          console.error('[MelhorEnvio] Erro ao criar envio', error.stack || error.message);
+        }
+      } else {
+        console.log('[PaymentsService] Envio já criado no carrinho do Melhor Envio para o pedido', updatedOrder.id);
+      }
+    } else if (pickupOrder || shipping_type === 'pickup') {
+      console.log('[PaymentsService] Entrando na condição de pickup');
+      if (!hasAlreadyNotified) {
+        try {
+          console.log('[PaymentsService] Chamando sendPickupNotification', { orderId: updatedOrder.id });
+          const notifications = await sendPickupNotification(updatedOrder);
+          console.log('[PaymentsService] Resultado da sendPickupNotification', notifications);
+          await updateOrderByExternalReference(existingOrder.external_reference, {
+            shipping_status: 'pickup_ready',
+            shipping_notification_status: [notifications.email?.status, notifications.whatsapp?.status].includes('sent') ? 'sent' : 'failed',
+            shipping_notification_sent_at: new Date().toISOString(),
+            shipping_notification_log: JSON.stringify(notifications),
+            shipping_email_status: notifications.email?.status || 'skipped',
+            shipping_whatsapp_status: notifications.whatsapp?.status || 'skipped'
+          });
+          console.log('[PaymentsService] Notificações de pickup atualizadas no pedido', existingOrder.external_reference);
+        } catch (error) {
+          console.error('[PaymentsService] Falha ao enviar notificações de pickup', error.stack || error.message);
+        }
+      } else {
+        console.log('[PaymentsService] Pickup já notificado anteriormente para pedido', updatedOrder.id);
+      }
+    } else {
+      if (!hasAlreadyNotified) {
+        try {
+          console.log('[PaymentsService] Iniciando fluxo genérico de notificação para frete (sem Melhor Envio)', updatedOrder.id);
+          const notificationResult = await sendOrderTrackingNotification(orderWithItems, {
+            carrier: updatedOrder.shipping_provider || 'Transportadora',
+            trackingCode: '',
+            deadline: updatedOrder.shipping_deadline || 'A calcular',
+            trackingUrl: ''
+          });
+          await updateOrderByExternalReference(existingOrder.external_reference, {
+            shipping_status: 'processing',
+            shipping_notification_status: [notificationResult.email?.status, notificationResult.whatsapp?.status].includes('sent') ? 'sent' : 'failed',
+            shipping_notification_sent_at: new Date().toISOString(),
+            shipping_notification_log: JSON.stringify(notificationResult),
+            shipping_email_status: notificationResult.email?.status || 'skipped',
+            shipping_whatsapp_status: notificationResult.whatsapp?.status || 'skipped'
+          });
+          console.log('[PaymentsService] Notificação genérica enviada para pedido', updatedOrder.id);
+        } catch (error) {
+          console.error('[PaymentsService] Falha ao enviar notificação genérica', error.stack || error.message);
+        }
+      }
+    }
+  }
+
+  if (!options.skipRaceGuard) {
+    processingWebhooks.delete(externalReference);
+  }
+
+  console.log('[PaymentsService] Finalizando processamento de pagamento MP', {
+    orderId: updatedOrder.id,
+    paymentStatus: payment.status,
+    pickupOrder,
+    externalReference
+  });
+
+  return {
+    ignored: false,
+    order: updatedOrder,
+    paymentId: payment.id,
+    paymentStatus: payment.status
+  };
+}
+
+async function reconcileMercadoPagoReturn({ paymentId, externalReference, emailHint }) {
+  const { verifyOrderPublicStatusAccess } = require('../utils/order-public-status');
+
+  if (!paymentId) {
+    const err = new Error('Informe payment_id.');
+    err.status = 400;
+    throw err;
+  }
+
+  const ref = String(externalReference || '').trim();
+  if (!ref) {
+    const err = new Error('Informe external_reference.');
+    err.status = 400;
+    throw err;
+  }
+
+  const existingOrder = await getOrderWithItems(ref);
+  if (!existingOrder) {
+    const err = new Error('Pedido não encontrado.');
+    err.status = 404;
+    throw err;
+  }
+
+  const access = verifyOrderPublicStatusAccess(existingOrder, emailHint);
+  if (!access.ok) {
+    const err = new Error(access.message);
+    err.status = access.status;
+    throw err;
+  }
+
+  if (existingOrder.status === 'paid') {
+    return {
+      reconciled: true,
+      alreadyPaid: true,
+      paymentStatus: existingOrder.payment_status || 'approved',
+      orderId: existingOrder.id,
+    };
+  }
+
+  const payment = await fetchPaymentDetails(String(paymentId));
+  const paymentRef = getNotificationReference(payment, null);
+  if (
+    paymentRef &&
+    paymentRef !== existingOrder.external_reference &&
+    paymentRef !== existingOrder.id &&
+    paymentRef !== existingOrder.order_number
+  ) {
+    const err = new Error('Pagamento não corresponde a este pedido.');
+    err.status = 400;
+    throw err;
+  }
+
+  if (payment.status !== 'approved') {
+    return {
+      reconciled: false,
+      paymentStatus: payment.status,
+      reason: 'Pagamento ainda não aprovado.',
+    };
+  }
+
+  const result = await applyMercadoPagoPaymentUpdate(payment, payment.order || null, { skipRaceGuard: true });
+  return {
+    reconciled: !result.ignored,
+    alreadyPaid: false,
+    paymentStatus: payment.status,
+    orderId: result.order?.id || existingOrder.id,
+  };
+}
+
 async function processMercadoPagoWebhook(req) {
   const { verifyMercadoPagoWebhookSignature } = require('../utils/mercadopago-webhook');
   const signatureCheck = verifyMercadoPagoWebhookSignature(req);
@@ -267,217 +547,12 @@ async function processMercadoPagoWebhook(req) {
     return { ignored: true, reason: 'Pagamento não recuperado.' };
   }
 
-  const metadata = payment.metadata || merchantOrder?.metadata || {};
-  console.log('[PaymentsService] Metadata encontrada', metadata);
-
-  const externalReference = getNotificationReference(payment, merchantOrder);
-  console.log('[PaymentsService] external_reference encontrado', externalReference);
-  if (!externalReference) {
-    console.warn('[PaymentsService] Retornando cedo: external_reference não encontrado');
-    return { ignored: true, reason: 'external_reference não encontrado.' };
-  }
-
-  if (processingWebhooks.has(externalReference)) {
-    console.log('[PaymentsService] Abortando webhook duplicado antes de qualquer side effect');
-    return { ignored: true, reason: 'Race condition prevenida. Webhook simultâneo.' };
-  }
-  processingWebhooks.add(externalReference);
-  setTimeout(() => processingWebhooks.delete(externalReference), 30000);
-
-  const existingOrder = await getOrderByReference(externalReference);
-  console.log('[PaymentsService] Pedido encontrado no banco', {
-    external_reference: externalReference,
-    orderId: existingOrder?.id,
-    status: existingOrder?.status
-  });
-  if (!existingOrder) {
-    processingWebhooks.delete(externalReference);
-    console.warn('[PaymentsService] Retornando cedo: pedido não encontrado no banco');
-    return { ignored: true, reason: 'Pedido não encontrado.' };
-  }
-
-  if (payment.status === 'approved' && existingOrder.status === 'paid') {
-    console.log('[PaymentsService] Abortando webhook duplicado antes de qualquer side effect');
-    console.log('[PaymentsService] Pedido já processado anteriormente');
-    processingWebhooks.delete(externalReference);
-    return {
-      ignored: true,
-      reason: 'Pedido já processado anteriormente.'
-    };
-  }
-
-  const statusMap = mapMercadoPagoPaymentStatus(payment.status);
-  const isCancelled = ['cancelled', 'rejected', 'refunded', 'charged_back'].includes(payment.status);
-  const wasNotCancelled = !['cancelled', 'rejected', 'refunded', 'charged_back'].includes(existingOrder.mercado_pago_status);
-
-  const orderUpdates = {
-    status: statusMap.orderStatus,
-    payment_status: statusMap.paymentStatus,
-    mercado_pago_payment_id: payment.id ? String(payment.id) : existingOrder.mercado_pago_payment_id,
-    mercado_pago_merchant_order_id: payment.order?.id ? String(payment.order.id) : existingOrder.mercado_pago_merchant_order_id,
-    mercado_pago_status: payment.status || null,
-    mercado_pago_status_detail: payment.status_detail || null,
-    paid_at: payment.status === 'approved' ? new Date().toISOString() : existingOrder.paid_at,
-    payment_payload: payment,
-  };
-
-  if (payment.status === 'approved') {
-    orderUpdates.fulfillment_status = 'pagamento_aprovado';
-  } else if (isCancelled) {
-    orderUpdates.fulfillment_status = 'cancelado';
-  }
-
-  const updatedOrder = await updateOrderByExternalReference(existingOrder.external_reference, orderUpdates);
-
-  if (isCancelled && wasNotCancelled) {
-    try {
-      const orderWithItems = await getOrderWithItems(existingOrder.external_reference);
-      await restoreStockForOrder(orderWithItems, orderWithItems.items || []);
-    } catch (error) {
-      console.error('[PaymentsService] Falha ao devolver estoque:', error.message);
-    }
-  }
-
-  let shipping_type = String(metadata.shipping_type || '').toLowerCase().trim();
-  if (!shipping_type && updatedOrder && updatedOrder.shipping_method) {
-    shipping_type = isPickupShippingMethod(updatedOrder.shipping_method) ? 'pickup' : 'shipping';
-  }
-  const pickupOrder = isPickupShipping(payment, merchantOrder, updatedOrder);
-  console.log('[PaymentsService] shipping_type identificado', {
-    shipping_type,
-    pickupOrder
-  });
-  const hasAlreadyNotified = Boolean(updatedOrder.shipping_notification_sent_at);
-
-  if (payment.status === 'approved') {
-    console.log('[PaymentsService] Pedido marcado como paid antes das notificações');
-
-    // Carregar os itens completos para o email admin e outras funções (se ainda não carregados)
-    const orderWithItems = await getOrderWithItems(existingOrder.external_reference);
-
-    // Disparar o envio do Email Administrativo para a loja (somente uma vez por pedido aprovado)
-    if (!existingOrder.paid_at) {
-      console.log('[AdminEmail] envio iniciado');
-      console.log('[AdminEmail] pedido:', updatedOrder.id);
-      console.log('[AdminEmail] método:', updatedOrder.shipping_method);
-      try {
-        await sendAdminNotification(orderWithItems);
-        console.log('[AdminEmail] email enviado');
-      } catch (error) {
-        console.error('[AdminEmail] erro:', error);
-      }
-
-      try {
-        await deductStockForOrder(orderWithItems, orderWithItems.items || []);
-        await incrementCouponUsage(orderWithItems.coupon_id, orderWithItems.coupon_code);
-      } catch (error) {
-        console.error('[PaymentsService] Falha na baixa de estoque/cupom:', error.message);
-      }
-    }
-
-    const orderId = updatedOrder.id;
-    if (shipping_type === 'shipping') {
-      console.log('[PaymentsService] Fluxo Melhor Envio ativado');
-      console.log('[PaymentsService] Criando envio Melhor Envio para pedido', orderId);
-      if (updatedOrder.shipping_status !== 'processing') {
-        try {
-          const serviceId = metadata.shipping_service_id || 
-                            existingOrder.raw_checkout_payload?.shipping?.id || 
-                            existingOrder.raw_checkout_payload?.shipping?.service_id ||
-                            updatedOrder.melhor_envio_shipment_id;
-
-          console.log('[MelhorEnvio] Service ID recuperado:', {
-            serviceId,
-            fromMetadata: metadata.shipping_service_id,
-            fromPayload: existingOrder.raw_checkout_payload?.shipping?.id,
-            fromShipmentId: updatedOrder.melhor_envio_shipment_id
-          });
-
-          if (!serviceId || serviceId === 'null') {
-            throw new Error(`Nenhum ID de serviço de frete válido encontrado para o pedido ${orderId}`);
-          }
-
-          console.log(`[MelhorEnvio] Criando envio no carrinho com serviceId: ${serviceId}`);
-          const shipmentId = await createShipmentInCart(orderWithItems, serviceId);
-          console.log('[MelhorEnvio] Envio criado com sucesso', { shipmentId });
-
-          await updateOrderByExternalReference(existingOrder.external_reference, {
-            melhor_envio_shipment_id: String(shipmentId), // Salvar shipment_id retornado
-            shipping_status: 'processing'
-          });
-        } catch (error) {
-          console.error('[MelhorEnvio] Erro ao criar envio', error.stack || error.message);
-        }
-      } else {
-        console.log('[PaymentsService] Envio já criado no carrinho do Melhor Envio para o pedido', updatedOrder.id);
-      }
-    } else if (pickupOrder || shipping_type === 'pickup') {
-      console.log('[PaymentsService] Entrando na condição de pickup');
-      if (!hasAlreadyNotified) {
-        try {
-          console.log('[PaymentsService] Chamando sendPickupNotification', { orderId: updatedOrder.id });
-          const notifications = await sendPickupNotification(updatedOrder);
-          console.log('[PaymentsService] Resultado da sendPickupNotification', notifications);
-          await updateOrderByExternalReference(existingOrder.external_reference, {
-            shipping_status: 'pickup_ready',
-            shipping_notification_status: [notifications.email?.status, notifications.whatsapp?.status].includes('sent') ? 'sent' : 'failed',
-            shipping_notification_sent_at: new Date().toISOString(),
-            shipping_notification_log: JSON.stringify(notifications),
-            shipping_email_status: notifications.email?.status || 'skipped',
-            shipping_whatsapp_status: notifications.whatsapp?.status || 'skipped'
-          });
-          console.log('[PaymentsService] Notificações de pickup atualizadas no pedido', existingOrder.external_reference);
-        } catch (error) {
-          console.error('[PaymentsService] Falha ao enviar notificações de pickup', error.stack || error.message);
-        }
-      } else {
-        console.log('[PaymentsService] Pickup já notificado anteriormente para pedido', updatedOrder.id);
-      }
-    } else {
-      if (!hasAlreadyNotified) {
-        try {
-          console.log('[PaymentsService] Iniciando fluxo genérico de notificação para frete (sem Melhor Envio)', updatedOrder.id);
-          const notificationResult = await sendOrderTrackingNotification(orderWithItems, {
-            carrier: updatedOrder.shipping_provider || 'Transportadora',
-            trackingCode: '',
-            deadline: updatedOrder.shipping_deadline || 'A calcular',
-            trackingUrl: ''
-          });
-          await updateOrderByExternalReference(existingOrder.external_reference, {
-            shipping_status: 'processing',
-            shipping_notification_status: [notificationResult.email?.status, notificationResult.whatsapp?.status].includes('sent') ? 'sent' : 'failed',
-            shipping_notification_sent_at: new Date().toISOString(),
-            shipping_notification_log: JSON.stringify(notificationResult),
-            shipping_email_status: notificationResult.email?.status || 'skipped',
-            shipping_whatsapp_status: notificationResult.whatsapp?.status || 'skipped'
-          });
-          console.log('[PaymentsService] Notificação genérica enviada para pedido', updatedOrder.id);
-        } catch (error) {
-          console.error('[PaymentsService] Falha ao enviar notificação genérica', error.stack || error.message);
-        }
-      }
-    }
-  }
-
-  processingWebhooks.delete(externalReference);
-
-  console.log('[PaymentsService] Finalizando processamento de webhook', {
-    orderId: updatedOrder.id,
-    paymentStatus: payment.status,
-    pickupOrder,
-    externalReference
-  });
-
-  return {
-    ignored: false,
-    order: updatedOrder,
-    paymentId: payment.id,
-    paymentStatus: payment.status
-  };
+  return applyMercadoPagoPaymentUpdate(payment, merchantOrder);
 }
 
 module.exports = {
   extractNotificationInfo,
   processMercadoPagoWebhook,
-  processStripeWebhook
+  processStripeWebhook,
+  reconcileMercadoPagoReturn,
 };

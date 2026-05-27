@@ -12,6 +12,7 @@ const {
   verifyOrderPublicStatusAccess,
   buildPublicOrderStatusResponse,
 } = require('../utils/order-public-status');
+const { reconcileMercadoPagoReturn } = require('../services/payments.service');
 
 const getAllOrders = asyncHandler(async (req, res) => {
   const limit = parseInt(req.query.limit, 10) || 50;
@@ -123,6 +124,36 @@ const getOrderPublicStatus = asyncHandler(async (req, res) => {
   return res.json(buildPublicOrderStatusResponse(order));
 });
 
+const reconcileOrderPayment = asyncHandler(async (req, res) => {
+  const reference = req.params.reference;
+  const paymentId =
+    req.body?.payment_id ||
+    req.body?.paymentId ||
+    req.query.payment_id ||
+    req.query.paymentId;
+
+  try {
+    const result = await reconcileMercadoPagoReturn({
+      paymentId,
+      externalReference: reference,
+      emailHint: req.body?.email || req.query.email || req.query.customer_email,
+    });
+
+    const order = await getOrderWithItems(reference);
+    if (!order) {
+      return res.status(404).json({ message: 'Pedido não encontrado.' });
+    }
+
+    return res.json({
+      ...result,
+      order: buildPublicOrderStatusResponse(order),
+    });
+  } catch (error) {
+    const status = error.status || 400;
+    return res.status(status).json({ message: error.message || 'Falha ao reconciliar pagamento.' });
+  }
+});
+
 const updateOrderStatus = asyncHandler(async (req, res) => {
   const { status, tracking_code, tracking_url, log_message, log_user } = req.body;
 
@@ -174,5 +205,6 @@ module.exports = {
   createManualOrder,
   getOrder,
   getOrderPublicStatus,
+  reconcileOrderPayment,
   updateOrderStatus
 };
