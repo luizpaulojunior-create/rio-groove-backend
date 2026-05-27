@@ -5,6 +5,11 @@ const { getShippingQuote } = require('./shipping.service');
 
 const FREE_SHIPPING_THRESHOLD = 799.9;
 const PICKUP_ID = 'pickup-rio';
+const RIO_PICKUP_CEP_PATTERN = /^2[0-8]\d{6}$/;
+
+function isRioPickupCep(cep) {
+  return RIO_PICKUP_CEP_PATTERN.test(onlyDigits(cep || ''));
+}
 
 function defaultPackageFromItems(items = []) {
   if (!items.length) {
@@ -61,6 +66,10 @@ async function resolveServerSideShipping(payload, subtotal) {
   }
 
   if (isPickupShipping(shipping)) {
+    const cep = onlyDigits(payload.address?.cep || payload.rawPayload?.address?.cep || '');
+    if (!isRioPickupCep(cep)) {
+      throw new Error('Retirada presencial disponível apenas para CEPs do Rio de Janeiro (20–28).');
+    }
     return {
       id,
       label: shipping.label || 'Retirada presencial',

@@ -4,7 +4,7 @@ const { normalizeString, onlyDigits, isValidEmail } = require('./order');
 function normalizeItem(rawItem = {}) {
   const unitPrice = parseMoney(rawItem.unit_price ?? rawItem.price ?? rawItem.unitPrice);
   const quantity = Number(rawItem.quantity || 1);
-  const productName = normalizeString(rawItem.title || rawItem.name);
+  const productName = normalizeString(rawItem.title || rawItem.name || rawItem.productName);
   const color = normalizeString(rawItem.color);
   const size = normalizeString(rawItem.size);
 
@@ -53,7 +53,7 @@ function validateCheckoutPayload(body = {}) {
   if (!customer.name) errors.push('Nome completo é obrigatório.');
   if (!isValidEmail(customer.email)) errors.push('E-mail inválido.');
   if (onlyDigits(customer.phone).length < 10) errors.push('Telefone/WhatsApp inválido.');
-  if (customer.cpf && customer.cpf.length !== 11) errors.push('CPF inválido.');
+  if (!customer.cpf || customer.cpf.length !== 11) errors.push('CPF inválido.');
 
   const address = {
     cep: onlyDigits(body.address?.cep),
