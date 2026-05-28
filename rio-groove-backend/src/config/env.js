@@ -47,7 +47,8 @@ const env = {
   storeDistrict: process.env.STORE_DISTRICT || 'Bairro',
   storeCity: process.env.STORE_CITY || 'Rio de Janeiro',
   storeStateAbbr: process.env.STORE_STATE_ABBR || 'RJ',
-  storePostalCode: process.env.STORE_POSTAL_CODE || process.env.MELHOR_ENVIO_ORIGIN_CEP || '22723019'
+  storePostalCode: process.env.STORE_POSTAL_CODE || process.env.MELHOR_ENVIO_ORIGIN_CEP || '22723019',
+  oauthStateSecret: process.env.OAUTH_STATE_SECRET || '',
 };
 
 const required = [

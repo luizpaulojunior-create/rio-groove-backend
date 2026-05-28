@@ -7,6 +7,8 @@ const { buildAllowedOrigins, isOriginAllowed } = require('./utils/cors-origin');
 
 const app = express();
 
+app.set('trust proxy', 1);
+
 const allowedOrigins = buildAllowedOrigins(process.env);
 
 const corsOptions = {

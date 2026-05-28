@@ -26,9 +26,10 @@ const mercadoPagoWebhook = asyncHandler(async (req, res) => {
       'user-agent': req.headers['user-agent'],
       'content-type': req.headers['content-type'],
       'x-forwarded-for': req.headers['x-forwarded-for'],
-      'x-real-ip': req.headers['x-real-ip']
+      'x-real-ip': req.headers['x-real-ip'],
     },
-    body: req.body
+    bodyType: req.body?.type || req.body?.action || null,
+    resourceId: req.body?.data?.id || req.query?.['data.id'] || null,
   });
 
   try {
@@ -46,12 +47,14 @@ const mercadoPagoWebhook = asyncHandler(async (req, res) => {
     return res.status(200).json({ received: true, ...result });
   } catch (error) {
     const durationMs = Date.now() - startTime;
+    const isAuthError = /assinatura|signature|x-signature|webhook secret/i.test(error.message || '');
     console.error('[WebhookController] Exception antes de chegar no PaymentsService', {
       error: error.stack || error.message,
       durationMs,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
-    return res.status(500).json({ received: false, error: 'Webhook processing error' });
+    const status = isAuthError ? 401 : 500;
+    return res.status(status).json({ received: false, error: isAuthError ? 'Unauthorized webhook' : 'Webhook processing error' });
   }
 });
 

@@ -5,7 +5,7 @@ const ME_OAUTH_BASE = env.melhorEnvioSandbox
   ? 'https://sandbox.melhorenvio.com.br' 
   : 'https://melhorenvio.com.br';
 
-async function getAuthorizationUrl() {
+async function getAuthorizationUrl(oauthState) {
   console.log('[MelhorEnvio OAuth] Authorization iniciado');
   const clientId = env.melhorEnvioClientId;
   const redirectUri = encodeURIComponent(env.melhorEnvioRedirectUri || '');
@@ -21,17 +21,15 @@ async function getAuthorizationUrl() {
   ];
   const scope = encodeURIComponent(scopesArray.join(' '));
   
-  console.log('[MelhorEnvio OAuth] Scopes utilizados:', scopesArray.join(' '));
   console.log('[MelhorEnvio OAuth] Ambiente Efetivo Sandbox:', env.melhorEnvioSandbox);
   
-  const authUrl = `${ME_OAUTH_BASE}/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}`;
-  console.log('[MelhorEnvio OAuth] URL OAuth final gerada:', authUrl);
+  const stateParam = oauthState ? `&state=${encodeURIComponent(oauthState)}` : '';
+  const authUrl = `${ME_OAUTH_BASE}/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}${stateParam}`;
   
   return authUrl;
 }
 
 async function handleCallback(code) {
-  console.log('[MelhorEnvio OAuth] Code recebido', code);
   console.log('[MelhorEnvio OAuth] Iniciando token exchange');
   
   const params = new URLSearchParams();
@@ -62,13 +60,6 @@ async function handleCallback(code) {
   console.log('[MelhorEnvio OAuth] Access token gerado');
 
   const expiresAt = new Date(Date.now() + data.expires_in * 1000);
-
-  console.log('[MelhorEnvio OAuth] Tentando salvar token no Supabase:', {
-    access_token_prefix: data.access_token ? data.access_token.substring(0, 15) + '...' : 'null',
-    refresh_token_prefix: data.refresh_token ? data.refresh_token.substring(0, 15) + '...' : 'null',
-    expires_at: expiresAt.toISOString(),
-    expires_in_seconds: data.expires_in
-  });
 
   const { error } = await supabase
     .from('oauth_tokens')

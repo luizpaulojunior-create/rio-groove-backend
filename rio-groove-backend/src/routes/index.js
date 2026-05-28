@@ -1,4 +1,7 @@
 const express = require('express');
+const requireAdminAuth = require('../middlewares/require-admin-auth');
+const requireMinRole = require('../middlewares/require-min-role');
+const { startMelhorEnvioOAuth } = require('../controllers/auth.controller');
 const healthRoutes = require('./health.routes');
 const configRoutes = require('./config.routes');
 const checkoutRoutes = require('./checkout.routes');
@@ -13,6 +16,13 @@ const stockRoutes = require('./stock.routes');
 const analyticsRoutes = require('./analytics.routes');
 
 const router = express.Router();
+
+router.post(
+  '/api/auth/melhor-envio/start',
+  requireAdminAuth,
+  requireMinRole('superadmin'),
+  startMelhorEnvioOAuth,
+);
 
 router.use('/auth', authRoutes);
 router.use(healthRoutes);

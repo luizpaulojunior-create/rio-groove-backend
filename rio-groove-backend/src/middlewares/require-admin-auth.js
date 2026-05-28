@@ -1,8 +1,8 @@
 const supabase = require('../lib/supabase');
+const { normalizeRole } = require('../utils/admin-roles');
 
 /**
  * Valida JWT Supabase (Bearer) e exige registro na tabela admins.
- * Usado em rotas administrativas — ver ARCHITECTURE.md Fase 2.
  */
 async function requireAdminAuth(req, res, next) {
   try {
@@ -21,7 +21,7 @@ async function requireAdminAuth(req, res, next) {
 
     const { data: adminRow, error: adminError } = await supabase
       .from('admins')
-      .select('id')
+      .select('id, role')
       .eq('id', user.id)
       .maybeSingle();
 
@@ -31,6 +31,7 @@ async function requireAdminAuth(req, res, next) {
 
     req.user = user;
     req.authToken = token;
+    req.adminRole = normalizeRole(adminRow.role);
     return next();
   } catch (err) {
     console.error('[Auth] Falha na validação JWT:', err.message);

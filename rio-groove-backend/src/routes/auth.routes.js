@@ -3,8 +3,10 @@ const { loginMelhorEnvio, callbackMelhorEnvio } = require('../controllers/auth.c
 
 const router = express.Router();
 
-// OAuth via redirect de browser — não envia Bearer; callback permanece público (Melhor Envio)
+// Legado: exige state assinado emitido por POST /api/auth/melhor-envio/start
 router.get('/melhor-envio/login', loginMelhorEnvio);
+
+// Callback público — Melhor Envio redireciona aqui; state valida origem
 router.get('/melhor-envio/callback', callbackMelhorEnvio);
 
 module.exports = router;

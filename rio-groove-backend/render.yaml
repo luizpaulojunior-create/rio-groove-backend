@@ -13,7 +13,11 @@ services:
       - key: PORT
         value: 3000
       - key: FRONTEND_URL
-        value: https://proud-breeze-a824.luizpaulojunior.workers.dev
+        value: https://store.riogroovemovimentos.com.br
+      - key: STORE_URL
+        value: https://store.riogroovemovimentos.com.br
+      - key: ADMIN_URL
+        value: https://rio-groove-admin-painel.pages.dev
       - key: BACKEND_URL
         sync: false
       - key: SUPABASE_URL
