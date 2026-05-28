@@ -263,15 +263,8 @@ const downloadOrderShippingLabelPdf = asyncHandler(async (req, res) => {
       const filename = `etiqueta-${order.order_number || order.id}.pdf`;
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type');
       return res.send(downloadResult.pdf);
-    }
-
-    if (downloadResult.labelUrl) {
-      await updateOrderById(order.id, { shipping_label_url: downloadResult.labelUrl });
-      return res.status(200).json({
-        message: 'PDF indisponível para download direto. Use o link da etiqueta.',
-        labelUrl: downloadResult.labelUrl,
-      });
     }
 
     return res.status(400).json({
