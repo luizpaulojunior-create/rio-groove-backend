@@ -213,6 +213,41 @@ function getMelhorEnvioBaseUrl() {
   return url;
 }
 
+function getMelhorEnvioApiRoot() {
+  return env.melhorEnvioSandbox
+    ? 'https://sandbox.melhorenvio.com.br'
+    : 'https://melhorenvio.com.br';
+}
+
+function extractMelhorEnvioUrl(payload) {
+  if (!payload) return null;
+  if (typeof payload === 'string') {
+    const trimmed = payload.trim();
+    if (trimmed.startsWith('http')) return trimmed.replace(/^["']|["']$/g, '');
+  }
+  if (typeof payload === 'object') {
+    return payload.url || payload.link || payload.pdf || payload.file || null;
+  }
+  return null;
+}
+
+async function fetchRemotePdfBuffer(pdfUrl) {
+  const response = await fetch(pdfUrl, {
+    headers: { 'User-Agent': getMelhorEnvioUserAgent() },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Falha ao baixar PDF (${response.status}).`);
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/pdf')) {
+    throw new Error('URL retornada não é um PDF.');
+  }
+
+  return Buffer.from(await response.arrayBuffer());
+}
+
 async function executeMelhorEnvioRequest(endpoint, body) {
   const token = await getValidToken();
   const tokenPrefix = token ? token.substring(0, 15) + '...' : 'NENHUM';
@@ -319,7 +354,7 @@ async function generateShippingLabel(shipmentId) {
   }
 }
 
-async function printShippingLabel(shipmentId) {
+async function printShippingLabel(shipmentId, { mode = 'public' } = {}) {
   if (!shipmentId) {
     throw new Error('Shipment ID obrigatório para imprimir etiqueta.');
   }
@@ -335,8 +370,7 @@ async function printShippingLabel(shipmentId) {
     const tokenPrefix = token ? token.substring(0, 15) + '...' : 'NENHUM';
     const tokenOrigin = (token && token === env.melhorEnvioToken) ? 'env' : 'supabase';
     
-    console.log(`[MelhorEnvio] printShippingLabel - Origem do token: ${tokenOrigin} | Prefixo: ${tokenPrefix}`);
-    console.log(`[MelhorEnvio] printShippingLabel - Header enviado: Authorization: Bearer ${tokenPrefix}`);
+    console.log(`[MelhorEnvio] printShippingLabel - Origem do token: ${tokenOrigin} | Prefixo: ${tokenPrefix} | mode: ${mode}`);
 
     const response = await fetch(url, {
       method: 'POST',
@@ -346,7 +380,7 @@ async function printShippingLabel(shipmentId) {
         Authorization: `Bearer ${token}`,
         'User-Agent': getMelhorEnvioUserAgent(),
       },
-      body: JSON.stringify({ mode: 'private', orders: [shipmentId] }),
+      body: JSON.stringify({ mode, orders: [String(shipmentId)] }),
       signal: controller.signal
     });
 
@@ -371,6 +405,90 @@ async function printShippingLabel(shipmentId) {
       : error.message;
     throw new Error(message);
   }
+}
+
+/** Baixa bytes do PDF via API ME (proxy server-side — evita link privado no browser). */
+async function downloadShippingLabelPdf(shipmentId) {
+  if (!shipmentId) {
+    throw new Error('Shipment ID obrigatório para baixar PDF.');
+  }
+
+  const token = await getValidToken();
+  if (!token) {
+    throw new Error('Token do Melhor Envio não configurado no backend.');
+  }
+
+  const root = getMelhorEnvioApiRoot();
+  const imprimirUrl = `${root}/api/v2/me/imprimir/pdf/${encodeURIComponent(String(shipmentId))}`;
+
+  console.log('[MelhorEnvio] downloadShippingLabelPdf via', imprimirUrl);
+
+  try {
+    const fileRes = await fetch(imprimirUrl, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json, application/pdf',
+        Authorization: `Bearer ${token}`,
+        'User-Agent': getMelhorEnvioUserAgent(),
+      },
+    });
+
+    if (fileRes.ok) {
+      const contentType = fileRes.headers.get('content-type') || '';
+      if (contentType.includes('application/pdf')) {
+        return {
+          pdf: Buffer.from(await fileRes.arrayBuffer()),
+          labelUrl: null,
+          source: 'imprimir-direct',
+        };
+      }
+
+      const rawText = await fileRes.text();
+      let payload;
+      try {
+        payload = JSON.parse(rawText);
+      } catch {
+        payload = rawText;
+      }
+
+      const pdfUrl = extractMelhorEnvioUrl(payload);
+      if (pdfUrl) {
+        const pdf = await fetchRemotePdfBuffer(pdfUrl);
+        return { pdf, labelUrl: pdfUrl, source: 'imprimir-s3' };
+      }
+    } else {
+      const errText = await fileRes.text();
+      console.warn('[MelhorEnvio] imprimir/pdf retornou', fileRes.status, errText.slice(0, 200));
+    }
+  } catch (error) {
+    console.warn('[MelhorEnvio] imprimir/pdf falhou:', error.message);
+  }
+
+  let printResult;
+  try {
+    printResult = await printShippingLabel(shipmentId, { mode: 'public' });
+  } catch (printError) {
+    console.warn('[MelhorEnvio] print public falhou:', printError.message);
+    await generateShippingLabel(shipmentId);
+    printResult = await printShippingLabel(shipmentId, { mode: 'public' });
+  }
+
+  if (printResult.pdf) {
+    return { pdf: printResult.pdf, labelUrl: null, source: 'print-direct' };
+  }
+
+  const printUrl = extractMelhorEnvioUrl(printResult.result) || extractMelhorEnvioUrl(printResult);
+  if (printUrl) {
+    try {
+      const pdf = await fetchRemotePdfBuffer(printUrl);
+      return { pdf, labelUrl: printUrl, source: 'print-url-pdf' };
+    } catch (fetchError) {
+      console.warn('[MelhorEnvio] print URL não retornou PDF:', fetchError.message);
+      return { pdf: null, labelUrl: printUrl, source: 'print-url-only' };
+    }
+  }
+
+  throw new Error('PDF da etiqueta indisponível no Melhor Envio. Tente gerar a etiqueta novamente.');
 }
 
 async function createShipmentInCart(order, serviceId) {
@@ -742,6 +860,7 @@ module.exports = {
   purchaseShipping,
   generateShippingLabel,
   printShippingLabel,
+  downloadShippingLabelPdf,
   isPickupShippingMethod,
   createShipmentInCart,
   getMelhorEnvioUserAgent,

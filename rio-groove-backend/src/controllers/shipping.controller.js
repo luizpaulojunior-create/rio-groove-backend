@@ -7,7 +7,7 @@ const {
 const {
   getShippingQuote,
   generateShippingLabel,
-  printShippingLabel,
+  downloadShippingLabelPdf,
   isPickupShippingMethod,
   resolveMelhorEnvioShipmentId,
   ensureShippingPurchased,
@@ -257,31 +257,20 @@ const downloadOrderShippingLabelPdf = asyncHandler(async (req, res) => {
       console.warn('[Shipping] sync antes do PDF:', syncError.message);
     }
 
-    let printResult;
-    try {
-      printResult = await printShippingLabel(shipmentId);
-    } catch (printError) {
-      console.warn('[Shipping] print falhou, tentando generate:', printError.message);
-      await generateShippingLabel(shipmentId);
-      printResult = await printShippingLabel(shipmentId);
-    }
+    const downloadResult = await downloadShippingLabelPdf(shipmentId);
 
-    if (printResult.pdf) {
+    if (downloadResult.pdf) {
       const filename = `etiqueta-${order.order_number || order.id}.pdf`;
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-      return res.send(printResult.pdf);
+      return res.send(downloadResult.pdf);
     }
 
-    const printUrl =
-      printResult.result?.url ||
-      printResult.result?.link ||
-      order.shipping_label_url;
-
-    if (printUrl) {
+    if (downloadResult.labelUrl) {
+      await updateOrderById(order.id, { shipping_label_url: downloadResult.labelUrl });
       return res.status(200).json({
-        message: 'PDF indisponível. Use o link da etiqueta.',
-        labelUrl: printUrl,
+        message: 'PDF indisponível para download direto. Use o link da etiqueta.',
+        labelUrl: downloadResult.labelUrl,
       });
     }
 
