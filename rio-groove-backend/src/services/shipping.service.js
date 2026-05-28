@@ -272,12 +272,35 @@ function extractMelhorEnvioUrl(payload) {
   return null;
 }
 
-async function fetchRemotePdfBuffer(pdfUrl, token = null) {
-  const headers = { 'User-Agent': getMelhorEnvioUserAgent() };
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-    headers.Accept = 'application/pdf, application/json, text/html, */*';
+function getMelhorEnvioUserAgent() {
+  const name = env.storeName || 'Rio Groove Admin';
+  const email = env.storeEmail || env.adminNotificationEmail || 'contato@riogroovemovimentos.com.br';
+  return `${name} (${email})`;
+}
+
+function formatMelhorEnvioHttpError(status, bodyText) {
+  const text = String(bodyText || '').trim();
+
+  if (status === 403 && (/<html/i.test(text) || /Acesso indisponível/i.test(text))) {
+    return new Error(
+      'Melhor Envio negou impressão (403). Vá em Configurações → Reconectar Melhor Envio para autorizar impressão de etiquetas (shipping-print).',
+    );
   }
+
+  if (/<html/i.test(text)) {
+    return new Error(`Melhor Envio retornou ${status}. Reconecte a integração em Configurações.`);
+  }
+
+  try {
+    const json = JSON.parse(text);
+    return new Error(json.message || `Melhor Envio retornou ${status}.`);
+  } catch {
+    return new Error(`Melhor Envio retornou ${status}: ${text.slice(0, 240)}`);
+  }
+}
+
+async function fetchRemotePdfBuffer(pdfUrl) {
+  const headers = { 'User-Agent': getMelhorEnvioUserAgent() };
 
   const response = await fetch(pdfUrl, { headers, redirect: 'follow' });
 
@@ -346,7 +369,8 @@ async function executeMelhorEnvioRequest(endpoint, body) {
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`
+        Authorization: `Bearer ${token}`,
+        'User-Agent': getMelhorEnvioUserAgent(),
       },
       body: JSON.stringify(body || {}),
       signal: controller.signal
@@ -356,7 +380,7 @@ async function executeMelhorEnvioRequest(endpoint, body) {
 
     if (!response.ok) {
       const text = await response.text();
-      throw new Error(`Melhor Envio retornou ${response.status}: ${text}`);
+      throw formatMelhorEnvioHttpError(response.status, text);
     }
 
     const contentType = response.headers.get('content-type') || '';
@@ -461,7 +485,7 @@ async function printShippingLabel(shipmentId, { mode = 'public' } = {}) {
 
     if (!response.ok) {
       const text = await response.text();
-      throw new Error(`Melhor Envio retornou ${response.status}: ${text}`);
+      throw formatMelhorEnvioHttpError(response.status, text);
     }
 
     const contentType = response.headers.get('content-type') || '';
@@ -473,10 +497,10 @@ async function printShippingLabel(shipmentId, { mode = 'public' } = {}) {
     return { shipmentId, result: await response.json() };
   } catch (error) {
     clearTimeout(timeoutId);
-    const message = error.name === 'AbortError'
-      ? 'Timeout de conexão com Melhor Envio.'
-      : error.message;
-    throw new Error(message);
+    if (error.name === 'AbortError') {
+      throw new Error('Timeout de conexão com Melhor Envio.');
+    }
+    throw error;
   }
 }
 
@@ -526,9 +550,11 @@ async function downloadShippingLabelPdf(shipmentId) {
 
       const pdfUrl = extractMelhorEnvioUrl(payload);
       if (pdfUrl) {
-        const pdf = await fetchRemotePdfBuffer(pdfUrl, token);
+        const pdf = await fetchRemotePdfBuffer(pdfUrl);
         return { pdf, labelUrl: pdfUrl, source: 'imprimir-s3' };
       }
+    } else if (fileRes.status === 403) {
+      throw formatMelhorEnvioHttpError(403, await fileRes.text());
     } else {
       const errText = await fileRes.text();
       console.warn('[MelhorEnvio] imprimir/pdf retornou', fileRes.status, errText.slice(0, 300));
@@ -544,7 +570,7 @@ async function downloadShippingLabelPdf(shipmentId) {
       extractMelhorEnvioUrl(orderDetails?.files) ||
       extractMelhorEnvioUrl(orderDetails);
     if (orderPdfUrl) {
-      const pdf = await fetchRemotePdfBuffer(orderPdfUrl, token);
+      const pdf = await fetchRemotePdfBuffer(orderPdfUrl);
       return { pdf, labelUrl: orderPdfUrl, source: 'orders-detail' };
     }
   } catch (error) {
@@ -555,7 +581,10 @@ async function downloadShippingLabelPdf(shipmentId) {
   try {
     printResult = await printShippingLabel(shipmentId, { mode: 'public' });
   } catch (printError) {
-    console.warn('[MelhorEnvio] print public falhou:', printError.message);
+    if (printError.message?.includes('403') || printError.message?.includes('shipping-print')) {
+      throw printError;
+    }
+    console.warn('[MelhorEnvio] print public falhou, tentando generate:', printError.message?.slice(0, 120));
     await generateShippingLabel(shipmentId);
     printResult = await printShippingLabel(shipmentId, { mode: 'public' });
   }
@@ -565,17 +594,17 @@ async function downloadShippingLabelPdf(shipmentId) {
   }
 
   const printUrl = extractMelhorEnvioUrl(printResult.result) || extractMelhorEnvioUrl(printResult);
-  if (printUrl) {
+  if (printUrl && /amazonaws\.com/i.test(printUrl)) {
     try {
-      const pdf = await fetchRemotePdfBuffer(printUrl, token);
+      const pdf = await fetchRemotePdfBuffer(printUrl);
       return { pdf, labelUrl: printUrl, source: 'print-url-pdf' };
     } catch (fetchError) {
-      console.warn('[MelhorEnvio] print URL não retornou PDF:', fetchError.message, printUrl);
+      console.warn('[MelhorEnvio] S3 print URL falhou:', fetchError.message);
     }
   }
 
   throw new Error(
-    'PDF da etiqueta indisponível no Melhor Envio. Confirme que a etiqueta foi gerada e paga, ou tente reconectar o Melhor Envio em Configurações.',
+    'PDF da etiqueta indisponível. Reconecte o Melhor Envio em Configurações (permissão shipping-print) e tente Baixar PDF novamente.',
   );
 }
 
@@ -732,12 +761,6 @@ async function createShipmentInCart(order, serviceId) {
 
 function isPickupShippingMethod(shippingMethod) {
   return typeof shippingMethod === 'string' && /retirada|pickup|loja|presencial/i.test(shippingMethod);
-}
-
-function getMelhorEnvioUserAgent() {
-  const name = env.storeName || 'Rio Groove Admin';
-  const email = env.storeEmail || env.adminNotificationEmail || 'contato@riogroovemovimentos.com.br';
-  return `${name} (${email})`;
 }
 
 function resolveMelhorEnvioServiceId(order) {

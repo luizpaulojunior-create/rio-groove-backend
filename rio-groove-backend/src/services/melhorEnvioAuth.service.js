@@ -11,13 +11,17 @@ async function getAuthorizationUrl(oauthState) {
   const redirectUri = encodeURIComponent(env.melhorEnvioRedirectUri || '');
   
   const scopesArray = [
+    'cart-read',
+    'cart-write',
+    'orders-read',
+    'purchases-read',
     'shipping-calculate',
     'shipping-generate',
     'shipping-cancel',
     'shipping-checkout',
     'shipping-companies',
-    'cart-read',
-    'cart-write'
+    'shipping-print',
+    'shipping-tracking',
   ];
   const scope = encodeURIComponent(scopesArray.join(' '));
   
