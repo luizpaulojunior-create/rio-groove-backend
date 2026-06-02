@@ -1,6 +1,7 @@
 const asyncHandler = require('../utils/asyncHandler');
 const productsService = require('../services/products.service');
 const uploadService = require('../services/upload.service');
+const { normalizeTagsField } = require('../utils/normalizeTags');
 const { STORAGE_BUCKET, STORAGE_PATHS } = require('../config/storage');
 
 function parseJsonField(value, fallback) {
@@ -104,12 +105,7 @@ const createProduct = asyncHandler(async (req, res) => {
       try { productData.variants = JSON.parse(productData.variants); } catch(e) { productData.variants = []; }
     }
 
-    if (productData.tags && typeof productData.tags === 'string') {
-      try { productData.tags = JSON.parse(productData.tags); } catch(e) { productData.tags = ['insumo:Camisa', 'model:Oversized Tradicional']; }
-    }
-    if (!Array.isArray(productData.tags) || productData.tags.length === 0) {
-      productData.tags = ['insumo:Camisa', 'model:Oversized Tradicional'];
-    }
+    productData.tags = normalizeTagsField(productData.tags);
 
     const fileMeta = parseNewImageMeta(productData.new_image_meta);
     delete productData.new_image_meta;
@@ -191,8 +187,8 @@ const updateProduct = asyncHandler(async (req, res) => {
       try { productData.variants = JSON.parse(productData.variants); } catch(e) { productData.variants = []; }
     }
 
-    if (productData.tags && typeof productData.tags === 'string') {
-      try { productData.tags = JSON.parse(productData.tags); } catch(e) { productData.tags = null; }
+    if (productData.tags !== undefined) {
+      productData.tags = normalizeTagsField(productData.tags);
     }
 
     const fileMeta = parseNewImageMeta(productData.new_image_meta);

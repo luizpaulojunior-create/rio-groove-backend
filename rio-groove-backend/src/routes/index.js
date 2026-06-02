@@ -14,6 +14,7 @@ const productsRoutes = require('./products.routes');
 const uploadRoutes = require('./upload.routes');
 const stockRoutes = require('./stock.routes');
 const analyticsRoutes = require('./analytics.routes');
+const customOrdersRoutes = require('./customOrders.routes');
 
 const router = express.Router();
 
@@ -36,5 +37,6 @@ router.use(productsRoutes);
 router.use(uploadRoutes);
 router.use(stockRoutes);
 router.use(analyticsRoutes);
+router.use(customOrdersRoutes);
 
 module.exports = router;

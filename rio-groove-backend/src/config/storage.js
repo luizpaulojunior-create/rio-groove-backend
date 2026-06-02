@@ -10,7 +10,8 @@ const STORAGE_PATHS = {
   EDITORIAL: 'storefront/editorial',
   CAMPAIGNS: 'campaigns',
   COLLECTIONS: 'collections',
-  PRODUCTS: 'products'
+  PRODUCTS: 'products',
+  CUSTOM_ORDERS: 'custom-orders',
 };
 
 module.exports = {

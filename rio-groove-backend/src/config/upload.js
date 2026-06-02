@@ -10,6 +10,15 @@ const ALLOWED_MIME_TYPES = new Set([
   'image/gif',
 ]);
 
+const CUSTOM_ORDER_MIME_TYPES = new Set([
+  ...ALLOWED_MIME_TYPES,
+  'application/pdf',
+  'image/svg+xml',
+  'application/postscript',
+  'application/illustrator',
+  'application/vnd.adobe.illustrator',
+]);
+
 function imageFileFilter(_req, file, cb) {
   if (ALLOWED_MIME_TYPES.has(String(file.mimetype || '').toLowerCase())) {
     cb(null, true);
@@ -24,8 +33,24 @@ const imageUpload = multer({
   fileFilter: imageFileFilter,
 });
 
+function customOrderFileFilter(_req, file, cb) {
+  if (CUSTOM_ORDER_MIME_TYPES.has(String(file.mimetype || '').toLowerCase())) {
+    cb(null, true);
+    return;
+  }
+  cb(new Error('Tipo de arquivo não permitido. Use imagem, PDF ou vetor.'));
+}
+
+const customOrderUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_FILE_SIZE_BYTES, files: 10 },
+  fileFilter: customOrderFileFilter,
+});
+
 module.exports = {
   imageUpload,
+  customOrderUpload,
   MAX_FILE_SIZE_BYTES,
   ALLOWED_MIME_TYPES,
+  CUSTOM_ORDER_MIME_TYPES,
 };
