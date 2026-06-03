@@ -1,3 +1,5 @@
+const { CUSTOM_ORDER_MAX_FILE_SIZE_BYTES } = require('../config/upload');
+
 function errorHandler(error, req, res, next) {
   const { captureException } = require('../lib/monitoring');
   captureException(error, {
@@ -8,13 +10,25 @@ function errorHandler(error, req, res, next) {
 
   console.error('[API ERROR]', req.requestId || '-', error);
 
+  if (error && error.name === 'MulterError' && error.code === 'LIMIT_FILE_SIZE') {
+    const maxMb = Math.round(CUSTOM_ORDER_MAX_FILE_SIZE_BYTES / (1024 * 1024));
+    return res.status(413).json({
+      ok: false,
+      error: `Arquivo muito grande. O limite é ${maxMb} MB por arquivo.`,
+      message: `Arquivo muito grande. O limite é ${maxMb} MB por arquivo.`,
+      requestId: req.requestId,
+    });
+  }
+
   const status = error.statusCode || 500;
   const message = error.message || 'Erro interno do servidor.';
 
   return res.status(status).json({
+    ok: false,
+    error: message,
     message,
     requestId: req.requestId,
-    detail: process.env.NODE_ENV === 'production' ? undefined : error.stack
+    detail: process.env.NODE_ENV === 'production' ? undefined : error.stack,
   });
 }
 

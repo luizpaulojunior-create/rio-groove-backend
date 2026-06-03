@@ -1,33 +1,14 @@
 /** Catálogo de insumos para pedidos personalizados (DTF — sem mínimo de peças). */
 
-const MODELS_MASC = [
-  'Oversized Tradicional',
-  'Oversized Boxy',
-  'Oversized Longline',
-  'Oversized Street',
-  'Oversized Urban',
-  'Oversized Minimal',
-];
+const MODELS_MASC_CAMISA = ['Oversized Tradicional', 'Regular', 'Regata'];
 
-const MODELS_FEM = [
-  'Oversized Tradicional',
-  'Oversized Boxy',
-  'Oversized Longline',
-  'Oversized Street',
-  'Oversized Urban',
-  'Oversized Minimal',
-  'Cropped Tradicional',
-  'Cropped Boxy',
-  'Cropped Street',
-  'Cropped Minimal',
-];
+const MODELS_FEM_CAMISA = ['Baby look', 'Cropped', 'Oversized'];
 
-const MODELS_CROPPED = [
-  'Cropped Tradicional',
-  'Cropped Boxy',
-  'Cropped Street',
-  'Cropped Minimal',
-];
+const MODELS_MASC = MODELS_MASC_CAMISA;
+
+const MODELS_FEM = MODELS_FEM_CAMISA;
+
+const MODELS_CROPPED = ['Cropped'];
 
 const MODELS_REGATA = ['Regata Tradicional', 'Regata Street', 'Regata Minimal'];
 
@@ -66,10 +47,9 @@ function modelsForInsumo(insumo, genero, segmento) {
     case 'Acessório':
       return MODELS_ACESSORIO;
     case 'Camisa':
-      if (segmento === 'cropped' || genero === 'Feminino') {
-        return genero === 'Feminino' ? MODELS_FEM : MODELS_MASC;
-      }
-      return genero === 'Feminino' ? MODELS_FEM : MODELS_MASC;
+      if (genero === 'Feminino') return MODELS_FEM_CAMISA;
+      if (genero === 'Masculino') return MODELS_MASC_CAMISA;
+      return [];
     default:
       return [];
   }

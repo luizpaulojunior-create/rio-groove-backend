@@ -9,7 +9,7 @@ async function createBuckets() {
     const { data, error } = await supabase.storage.createBucket(bucket, {
       public: true,
       allowedMimeTypes: ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/svg+xml', 'image/gif'],
-      fileSizeLimit: 10485760 // 10MB
+      fileSizeLimit: 20971520 // 20MB (personalizados — artes até ~20 MB)
     });
     if (error) {
       if (error.message.includes('already exists')) {
