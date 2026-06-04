@@ -1,8 +1,12 @@
 const asyncHandler = require('../utils/asyncHandler');
+const { resolveRequestAdmin } = require('../utils/resolve-request-admin');
 const collectionsService = require('../services/collections.service');
 
 const getAllCollections = asyncHandler(async (req, res) => {
-  const collections = await collectionsService.getCollections(req.query);
+  const admin = await resolveRequestAdmin(req);
+  const collections = await collectionsService.getCollections(req.query, {
+    includeInactive: Boolean(admin),
+  });
   return res.json(collections);
 });
 
@@ -13,8 +17,8 @@ const getCollection = asyncHandler(async (req, res) => {
     return res.status(404).json({ message: 'Coleção não encontrada' });
   }
 
-  const isAuthenticated = Boolean(req.headers.authorization);
-  if (collection.active === false && !isAuthenticated) {
+  const admin = await resolveRequestAdmin(req);
+  if (collection.active === false && !admin) {
     return res.status(404).json({ message: 'Coleção não encontrada' });
   }
 

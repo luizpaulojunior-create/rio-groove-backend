@@ -14,6 +14,11 @@ const {
 } = require('../utils/order');
 const { validateStockForItems, reserveStockForOrder, restoreStockForOrder } = require('./stockCheckout.service');
 const { resolveAffiliate, upsertNewsletterSubscriber } = require('./growth.service');
+const {
+  resolveReturnOrigin,
+  buildMercadoPagoBackUrls,
+  getMercadoPagoNotificationUrl,
+} = require('../utils/checkout-urls');
 
 async function createCheckout({ payload }) {
   const orderId = randomUUID();
@@ -200,15 +205,11 @@ async function createCheckout({ payload }) {
       };
     }
 
-    const returnBase = String(
-      payload.return_origin || payload.returnOrigin || env.frontendUrl
-    ).replace(/\/$/, '');
-    const notificationUrl = payload.notification_url || payload.notificationUrl || `${env.backendUrl}/api/webhooks/mercadopago`;
-    const backUrls = payload.back_urls || payload.backUrls || {
-      success: `${returnBase}/success?payment=approved&external_reference=${encodeURIComponent(externalReference)}`,
-      pending: `${returnBase}/success?payment=pending&external_reference=${encodeURIComponent(externalReference)}`,
-      failure: `${returnBase}/success?payment=failure&external_reference=${encodeURIComponent(externalReference)}`,
-    };
+    const returnBase = resolveReturnOrigin(
+      payload.return_origin || payload.returnOrigin
+    );
+    const notificationUrl = getMercadoPagoNotificationUrl();
+    const backUrls = buildMercadoPagoBackUrls(returnBase, externalReference);
     const autoReturn = payload.auto_return || payload.autoReturn || 'approved';
     const metadata = {
       order_id: orderId,
@@ -250,13 +251,15 @@ async function createCheckout({ payload }) {
       metadata
     };
 
-    console.log('[Checkout] BODY FINAL ENVIADO AO MP:', JSON.stringify(preferenceBody, null, 2));
+    console.log('[Checkout] Criando preferência MP', {
+      externalReference,
+      itemCount: preferenceItems.length,
+      total: payload.total,
+    });
 
     const preference = await preferenceClient.create({
       body: preferenceBody
     });
-
-    console.log('[Checkout] RESPOSTA API MP:', JSON.stringify(preference, null, 2));
     
     // MP SDK v2.3.0 sometimes returns the preference nested in 'body' depending on usage, 
     // but preferenceClient.create returns the object itself or nested? Let's safeguard:

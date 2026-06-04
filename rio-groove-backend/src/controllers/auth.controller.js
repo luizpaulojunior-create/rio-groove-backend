@@ -15,14 +15,14 @@ async function loginMelhorEnvio(req, res) {
     if (!verification.valid) {
       return res.status(403).json({
         message: 'OAuth Melhor Envio deve ser iniciado pelo painel admin (superadmin).',
-        reason: verification.reason,
       });
     }
 
     const url = await getAuthorizationUrl(state);
     return res.redirect(url);
   } catch (error) {
-    return res.status(500).json({ error: error.message });
+    console.error('[OAuth] login Melhor Envio:', error.message);
+    return res.status(500).json({ message: 'Falha ao iniciar autenticação.' });
   }
 }
 
@@ -36,13 +36,14 @@ async function callbackMelhorEnvio(req, res) {
 
     const verification = verifyOAuthState(state);
     if (!verification.valid) {
-      return res.status(403).send(`State OAuth inválido: ${verification.reason}`);
+      return res.status(403).send('Link de autenticação inválido ou expirado.');
     }
 
     await handleCallback(code);
     return res.send('Autenticação com Melhor Envio concluída com sucesso! Pode fechar esta janela.');
   } catch (error) {
-    return res.status(500).send(`Erro na autenticação: ${error.message}`);
+    console.error('[OAuth] callback Melhor Envio:', error.message);
+    return res.status(500).send('Erro na autenticação. Tente novamente pelo painel admin.');
   }
 }
 

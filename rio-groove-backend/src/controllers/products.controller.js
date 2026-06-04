@@ -1,4 +1,5 @@
 const asyncHandler = require('../utils/asyncHandler');
+const { resolveRequestAdmin } = require('../utils/resolve-request-admin');
 const productsService = require('../services/products.service');
 const uploadService = require('../services/upload.service');
 const { normalizeTagsField } = require('../utils/normalizeTags');
@@ -51,7 +52,10 @@ async function appendUploadedImages(images, files, fileMeta, productName) {
 }
 
 const getAllProducts = asyncHandler(async (req, res) => {
-  const products = await productsService.getProducts(req.query);
+  const admin = await resolveRequestAdmin(req);
+  const products = await productsService.getProducts(req.query, {
+    includeInactive: Boolean(admin),
+  });
   return res.json(products);
 });
 
@@ -70,8 +74,8 @@ const getProduct = asyncHandler(async (req, res) => {
     return res.status(404).json({ message: 'Produto não encontrado' });
   }
 
-  const isAuthenticated = Boolean(req.headers.authorization);
-  if (!product.active && !isAuthenticated) {
+  const admin = await resolveRequestAdmin(req);
+  if (!product.active && !admin) {
     return res.status(404).json({ message: 'Produto não encontrado' });
   }
 

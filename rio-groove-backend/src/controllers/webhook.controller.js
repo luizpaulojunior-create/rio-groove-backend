@@ -10,24 +10,14 @@ const stripeWebhook = asyncHandler(async (req, res) => {
     const durationMs = Date.now() - startTime;
     return res.status(200).json({ received: true, ...result });
   } catch (error) {
-    console.error('[WebhookController] Erro no processamento Stripe:', error);
-    return res.status(400).send(`Webhook Error: ${error.message}`);
+    console.error('[WebhookController] Erro no processamento Stripe:', error.message);
+    return res.status(400).send('Webhook Error');
   }
 });
 
 const mercadoPagoWebhook = asyncHandler(async (req, res) => {
   const startTime = Date.now();
-  console.log('[WebhookController] Requisição recebida no endpoint', {
-    timestamp: new Date().toISOString(),
-    method: req.method,
-    url: req.originalUrl || req.url,
-    headers: {
-      host: req.headers.host,
-      'user-agent': req.headers['user-agent'],
-      'content-type': req.headers['content-type'],
-      'x-forwarded-for': req.headers['x-forwarded-for'],
-      'x-real-ip': req.headers['x-real-ip'],
-    },
+  console.log('[WebhookController] MP webhook', {
     bodyType: req.body?.type || req.body?.action || null,
     resourceId: req.body?.data?.id || req.query?.['data.id'] || null,
   });

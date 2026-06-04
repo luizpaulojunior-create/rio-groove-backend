@@ -1,16 +1,17 @@
 const supabase = require('../lib/supabase');
 
-async function getCollections(query = {}) {
+async function getCollections(query = {}, options = {}) {
   let req = supabase
     .from('collections')
     .select('*, products(count)')
     .order('created_at', { ascending: false });
 
-  const activeFilter =
-    query.active !== undefined
-      ? query.active === 'true' || query.active === true
-      : true;
-  req = req.eq('active', activeFilter);
+  if (!options.includeInactive) {
+    req = req.eq('active', true);
+  } else if (query.active !== undefined) {
+    const activeFilter = query.active === 'true' || query.active === true;
+    req = req.eq('active', activeFilter);
+  }
 
   const { data, error } = await req;
   if (error) throw error;

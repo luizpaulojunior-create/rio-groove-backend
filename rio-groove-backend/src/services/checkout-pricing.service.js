@@ -103,8 +103,6 @@ async function resolveServerSideShipping(payload, subtotal) {
 
   if (subtotal >= FREE_SHIPPING_THRESHOLD && clientPrice === 0) {
     price = 0;
-  } else if (clientPrice === 0 && /gr[aá]tis/i.test(String(shipping.label || ''))) {
-    price = 0;
   } else if (Math.abs(price - clientPrice) > 0.02) {
     console.warn('[CheckoutPricing] Frete ajustado no servidor:', clientPrice, '->', price);
   }

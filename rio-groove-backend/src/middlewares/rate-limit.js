@@ -49,7 +49,7 @@ const apiLimiter = createLimiter({
 
 const couponValidateLimiter = createLimiter({
   windowMs: 15 * 60 * 1000,
-  max: 30,
+  max: 15,
   message: 'Muitas tentativas de cupom. Aguarde alguns minutos.',
 });
 

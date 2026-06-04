@@ -80,14 +80,15 @@ function buildImageRow(img, productId, index) {
   };
 }
 
-async function getProducts(query = {}) {
+async function getProducts(query = {}, options = {}) {
   let req = supabase.from('products').select('*, collections(name), product_images(*), product_variants(*)').order('created_at', { ascending: false });
 
-  const activeFilter =
-    query.active !== undefined
-      ? query.active === 'true' || query.active === true
-      : true;
-  req = req.eq('active', activeFilter);
+  if (!options.includeInactive) {
+    req = req.eq('active', true);
+  } else if (query.active !== undefined) {
+    const activeFilter = query.active === 'true' || query.active === true;
+    req = req.eq('active', activeFilter);
+  }
   
   const { data, error } = await req;
   if (error) throw error;

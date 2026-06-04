@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const supabase = require('../lib/supabase');
-const { uploadCustomOrderFile } = require('./upload.service');
+const { uploadCustomOrderFile, uploadImage } = require('./upload.service');
 const { STORAGE_BUCKET, STORAGE_PATHS } = require('../config/storage');
 const { validateCustomOrderPayload, VALID_STATUSES } = require('../config/customProducts');
 

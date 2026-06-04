@@ -35,6 +35,11 @@ function verifyMercadoPagoWebhookSignature(req) {
     return { valid: false, reason: 'Formato x-signature inválido.' };
   }
 
+  const tsMs = Number(ts) * 1000;
+  if (!Number.isFinite(tsMs) || Math.abs(Date.now() - tsMs) > 5 * 60 * 1000) {
+    return { valid: false, reason: 'Timestamp do webhook expirado.' };
+  }
+
   const dataId =
     req.query?.['data.id'] ||
     req.body?.data?.id ||

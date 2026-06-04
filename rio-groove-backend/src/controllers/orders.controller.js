@@ -109,17 +109,23 @@ const getOrder = asyncHandler(async (req, res) => {
   return res.json({ order });
 });
 
+const PUBLIC_ORDER_DENIED = 'Pedido não encontrado ou e-mail incorreto.';
+
 const getOrderPublicStatus = asyncHandler(async (req, res) => {
   const order = await getOrderWithItems(req.params.reference);
 
-  if (!order) {
-    return res.status(404).json({ message: 'Pedido não encontrado.' });
-  }
-
   const emailHint =
     req.body?.email || req.body?.customer_email || req.query.email || req.query.customer_email;
+
+  if (!order) {
+    return res.status(404).json({ message: PUBLIC_ORDER_DENIED });
+  }
+
   const access = verifyOrderPublicStatusAccess(order, emailHint);
   if (!access.ok) {
+    if (access.status === 403) {
+      return res.status(404).json({ message: PUBLIC_ORDER_DENIED });
+    }
     return res.status(access.status).json({ message: access.message });
   }
 
