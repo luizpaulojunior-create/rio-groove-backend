@@ -1,6 +1,6 @@
 const express = require('express');
 const { customOrderUpload } = require('../config/upload');
-const { customOrderLimiter } = require('../middlewares/rate-limit');
+const { customOrderLimiter, customOrderTrackLimiter } = require('../middlewares/rate-limit');
 const requireAdminAuth = require('../middlewares/require-admin-auth');
 const requireMinRole = require('../middlewares/require-min-role');
 const {
@@ -24,7 +24,7 @@ router.post(
   submitCustomOrder,
 );
 
-router.get('/api/custom-orders/track/:token', getCustomOrderPublic);
+router.get('/api/custom-orders/track/:token', customOrderTrackLimiter, getCustomOrderPublic);
 
 router.get(
   '/api/custom-orders',

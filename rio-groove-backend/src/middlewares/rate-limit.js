@@ -47,11 +47,25 @@ const apiLimiter = createLimiter({
   message: 'Muitas requisições. Aguarde alguns minutos.',
 });
 
+const couponValidateLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: 'Muitas tentativas de cupom. Aguarde alguns minutos.',
+});
+
+const customOrderTrackLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 40,
+  message: 'Muitas consultas de pedido. Aguarde alguns minutos.',
+});
+
 module.exports = {
   checkoutLimiter,
   shippingQuoteLimiter,
   orderStatusLimiter,
   webhookLimiter,
   customOrderLimiter,
+  customOrderTrackLimiter,
+  couponValidateLimiter,
   apiLimiter,
 };

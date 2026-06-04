@@ -116,7 +116,9 @@ const getOrderPublicStatus = asyncHandler(async (req, res) => {
     return res.status(404).json({ message: 'Pedido não encontrado.' });
   }
 
-  const access = verifyOrderPublicStatusAccess(order, req.query.email || req.query.customer_email);
+  const emailHint =
+    req.body?.email || req.body?.customer_email || req.query.email || req.query.customer_email;
+  const access = verifyOrderPublicStatusAccess(order, emailHint);
   if (!access.ok) {
     return res.status(access.status).json({ message: access.message });
   }

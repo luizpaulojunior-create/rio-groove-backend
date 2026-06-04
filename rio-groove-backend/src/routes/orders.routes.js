@@ -9,6 +9,7 @@ const router = express.Router();
 router.get('/api/orders', requireAdminAuth, getAllOrders);
 router.post('/api/orders', requireAdminAuth, requireMinRole('editor'), createManualOrder);
 router.get('/api/orders/:reference/public-status', orderStatusLimiter, getOrderPublicStatus);
+router.post('/api/orders/:reference/public-status', orderStatusLimiter, getOrderPublicStatus);
 router.post('/api/orders/:reference/reconcile-payment', orderStatusLimiter, reconcileOrderPayment);
 router.get('/api/orders/:reference', requireAdminAuth, getOrder);
 router.put('/api/orders/:id/status', requireAdminAuth, requireMinRole('editor'), updateOrderStatus);
