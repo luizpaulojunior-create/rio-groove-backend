@@ -59,6 +59,12 @@ const customOrderTrackLimiter = createLimiter({
   message: 'Muitas consultas de pedido. Aguarde alguns minutos.',
 });
 
+const oauthLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  message: 'Muitas tentativas de autenticação. Aguarde alguns minutos.',
+});
+
 module.exports = {
   checkoutLimiter,
   shippingQuoteLimiter,
@@ -67,5 +73,6 @@ module.exports = {
   customOrderLimiter,
   customOrderTrackLimiter,
   couponValidateLimiter,
+  oauthLimiter,
   apiLimiter,
 };

@@ -11,6 +11,7 @@ const { restoreStockForOrder } = require('../services/stockCheckout.service');
 const {
   verifyOrderPublicStatusAccess,
   buildPublicOrderStatusResponse,
+  PUBLIC_ORDER_DENIED,
 } = require('../utils/order-public-status');
 const { reconcileMercadoPagoReturn } = require('../services/payments.service');
 
@@ -109,8 +110,6 @@ const getOrder = asyncHandler(async (req, res) => {
   return res.json({ order });
 });
 
-const PUBLIC_ORDER_DENIED = 'Pedido não encontrado ou e-mail incorreto.';
-
 const getOrderPublicStatus = asyncHandler(async (req, res) => {
   const order = await getOrderWithItems(req.params.reference);
 
@@ -149,7 +148,7 @@ const reconcileOrderPayment = asyncHandler(async (req, res) => {
 
     const order = await getOrderWithItems(reference);
     if (!order) {
-      return res.status(404).json({ message: 'Pedido não encontrado.' });
+      return res.status(404).json({ message: PUBLIC_ORDER_DENIED });
     }
 
     return res.json({
@@ -157,8 +156,12 @@ const reconcileOrderPayment = asyncHandler(async (req, res) => {
       order: buildPublicOrderStatusResponse(order),
     });
   } catch (error) {
-    const status = error.status || 400;
-    return res.status(status).json({ message: error.message || 'Falha ao reconciliar pagamento.' });
+    const status = error.status === 403 ? 404 : (error.status || 400);
+    const message =
+      status === 404
+        ? PUBLIC_ORDER_DENIED
+        : (error.message || 'Falha ao reconciliar pagamento.');
+    return res.status(status).json({ message });
   }
 });
 

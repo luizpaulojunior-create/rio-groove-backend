@@ -423,17 +423,19 @@ async function reconcileMercadoPagoReturn({ paymentId, externalReference, emailH
     throw err;
   }
 
+  const { PUBLIC_ORDER_DENIED } = require('../utils/order-public-status');
+
   const existingOrder = await getOrderWithItems(ref);
   if (!existingOrder) {
-    const err = new Error('Pedido não encontrado.');
+    const err = new Error(PUBLIC_ORDER_DENIED);
     err.status = 404;
     throw err;
   }
 
   const access = verifyOrderPublicStatusAccess(existingOrder, emailHint);
   if (!access.ok) {
-    const err = new Error(access.message);
-    err.status = access.status;
+    const err = new Error(access.status === 403 ? PUBLIC_ORDER_DENIED : access.message);
+    err.status = access.status === 403 ? 404 : access.status;
     throw err;
   }
 

@@ -6,8 +6,6 @@ function requireMinRole(minRole) {
     if (!hasMinRole(userRole, minRole)) {
       return res.status(403).json({
         message: 'Permissão insuficiente para esta operação.',
-        requiredRole: minRole,
-        currentRole: userRole,
       });
     }
     return next();

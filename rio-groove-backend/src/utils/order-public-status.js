@@ -43,7 +43,10 @@ function buildPublicOrderStatusResponse(order) {
   };
 }
 
+const PUBLIC_ORDER_DENIED = 'Pedido não encontrado ou e-mail incorreto.';
+
 module.exports = {
   verifyOrderPublicStatusAccess,
   buildPublicOrderStatusResponse,
+  PUBLIC_ORDER_DENIED,
 };
