@@ -2,7 +2,11 @@ const crypto = require('crypto');
 const env = require('../config/env');
 
 function getSigningSecret() {
-  return env.oauthStateSecret || env.supabaseServiceRoleKey || '';
+  if (env.oauthStateSecret) return env.oauthStateSecret;
+  if (env.nodeEnv === 'production') {
+    throw new Error('OAUTH_STATE_SECRET é obrigatório em produção.');
+  }
+  return env.supabaseServiceRoleKey || '';
 }
 
 function signOAuthState(payload) {

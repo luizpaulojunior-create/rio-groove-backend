@@ -3,13 +3,19 @@ const crypto = require('crypto');
 
 const { STORAGE_BUCKET } = require('../config/storage');
 
-const uploadImage = async (file, bucket = STORAGE_BUCKET, folderPath = '') => {
-  console.log('FILE:', file);
-  console.log('FILE NAME:', file.originalname);
-  console.log('MIME:', file.mimetype);
-  console.log('SIZE:', file.size);
+const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'webp', 'gif']);
+const CUSTOM_ORDER_EXTENSIONS = new Set([
+  'jpg', 'jpeg', 'png', 'webp', 'gif', 'pdf', 'svg', 'ai', 'eps', 'ps',
+]);
 
-  const extension = file.originalname.split('.').pop();
+async function uploadBuffer(file, bucket, folderPath, allowedExtensions) {
+  const safeName = String(file.originalname || 'file')
+    .replace(/[/\\]/g, '')
+    .replace(/[^\w.\-]+/g, '_');
+  const extension = (safeName.split('.').pop() || 'bin').toLowerCase().slice(0, 8);
+  if (!allowedExtensions.has(extension)) {
+    throw Object.assign(new Error('Extensão de arquivo não permitida.'), { statusCode: 400 });
+  }
   const filename = `${crypto.randomUUID()}.${extension}`;
   const filePath = folderPath ? `${folderPath}/${filename}` : filename;
 
@@ -17,11 +23,8 @@ const uploadImage = async (file, bucket = STORAGE_BUCKET, folderPath = '') => {
     .from(bucket)
     .upload(filePath, file.buffer, {
       contentType: file.mimetype,
-      upsert: true
+      upsert: false,
     });
-
-  console.log('UPLOAD DATA:', data);
-  console.log('UPLOAD ERROR:', error);
 
   if (error) {
     throw new Error(`Erro ao fazer upload: ${error.message}`);
@@ -34,6 +37,13 @@ const uploadImage = async (file, bucket = STORAGE_BUCKET, folderPath = '') => {
   return urlData.publicUrl;
 };
 
+const uploadImage = (file, bucket, folderPath) =>
+  uploadBuffer(file, bucket, folderPath, IMAGE_EXTENSIONS);
+
+const uploadCustomOrderFile = (file, bucket, folderPath) =>
+  uploadBuffer(file, bucket, folderPath, CUSTOM_ORDER_EXTENSIONS);
+
 module.exports = {
-  uploadImage
+  uploadImage,
+  uploadCustomOrderFile,
 };

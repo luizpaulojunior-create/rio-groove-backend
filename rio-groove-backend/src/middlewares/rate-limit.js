@@ -35,9 +35,23 @@ const webhookLimiter = createLimiter({
   message: 'Limite de webhooks excedido.',
 });
 
+const customOrderLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 8,
+  message: 'Muitos pedidos personalizados enviados. Aguarde alguns minutos.',
+});
+
+const apiLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  message: 'Muitas requisições. Aguarde alguns minutos.',
+});
+
 module.exports = {
   checkoutLimiter,
   shippingQuoteLimiter,
   orderStatusLimiter,
   webhookLimiter,
+  customOrderLimiter,
+  apiLimiter,
 };

@@ -3,11 +3,19 @@ const cors = require('cors');
 const routes = require('./routes');
 const errorHandler = require('./middlewares/error-handler');
 const requestId = require('./middlewares/request-id');
+const { apiLimiter } = require('./middlewares/rate-limit');
 const { buildAllowedOrigins, isOriginAllowed } = require('./utils/cors-origin');
 
 const app = express();
 
 app.set('trust proxy', 1);
+
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
 
 const allowedOrigins = buildAllowedOrigins(process.env);
 
@@ -16,16 +24,16 @@ const corsOptions = {
     const allowed = isOriginAllowed(origin, allowedOrigins);
 
     if (!origin) {
-      console.log('[CORS] Origin allowed (no origin / server-to-server)');
       return callback(null, true);
     }
 
-    console.log(`[CORS] Request from Origin: ${origin} | Allowed: ${allowed}`);
+    if (process.env.NODE_ENV !== 'production' && !allowed) {
+      console.log(`[CORS] Blocked: ${origin}`);
+    }
 
     if (allowed) {
       callback(null, true);
     } else {
-      console.log(`[CORS] Blocked by CORS: ${origin}`);
       callback(null, false);
     }
   },
@@ -44,6 +52,11 @@ app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
 
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/api')) return next();
+  if (req.path.startsWith('/api/webhooks') || req.path === '/api/health') return next();
+  return apiLimiter(req, res, next);
+});
 
 app.get('/', (req, res) => {
   res.json({

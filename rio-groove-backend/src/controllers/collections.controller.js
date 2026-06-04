@@ -12,6 +12,12 @@ const getCollection = asyncHandler(async (req, res) => {
   if (!collection) {
     return res.status(404).json({ message: 'Coleção não encontrada' });
   }
+
+  const isAuthenticated = Boolean(req.headers.authorization);
+  if (collection.active === false && !isAuthenticated) {
+    return res.status(404).json({ message: 'Coleção não encontrada' });
+  }
+
   return res.json(collection);
 });
 

@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 const supabase = require('../lib/supabase');
-const { uploadImage } = require('./upload.service');
+const { uploadCustomOrderFile } = require('./upload.service');
 const { STORAGE_BUCKET, STORAGE_PATHS } = require('../config/storage');
 const { validateCustomOrderPayload, VALID_STATUSES } = require('../config/customProducts');
 
@@ -78,7 +78,7 @@ async function createCustomOrder(body, files = []) {
   const refFiles = files.filter((f) => f.fieldname === 'reference_files');
 
   for (const file of artFiles) {
-    const url = await uploadImage(
+    const url = await uploadCustomOrderFile(
       file,
       STORAGE_BUCKET,
       `${STORAGE_PATHS.CUSTOM_ORDERS}/${order.id}/customer`,
@@ -92,7 +92,7 @@ async function createCustomOrder(body, files = []) {
   }
 
   for (const file of refFiles) {
-    const url = await uploadImage(
+    const url = await uploadCustomOrderFile(
       file,
       STORAGE_BUCKET,
       `${STORAGE_PATHS.CUSTOM_ORDERS}/${order.id}/reference`,

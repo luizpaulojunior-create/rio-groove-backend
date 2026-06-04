@@ -69,6 +69,12 @@ const getProduct = asyncHandler(async (req, res) => {
   if (!product) {
     return res.status(404).json({ message: 'Produto não encontrado' });
   }
+
+  const isAuthenticated = Boolean(req.headers.authorization);
+  if (!product.active && !isAuthenticated) {
+    return res.status(404).json({ message: 'Produto não encontrado' });
+  }
+
   return res.json(product);
 });
 

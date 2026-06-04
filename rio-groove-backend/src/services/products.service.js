@@ -82,11 +82,12 @@ function buildImageRow(img, productId, index) {
 
 async function getProducts(query = {}) {
   let req = supabase.from('products').select('*, collections(name), product_images(*), product_variants(*)').order('created_at', { ascending: false });
-  
-  if (query.active !== undefined) {
-    const isActive = query.active === 'true' || query.active === true;
-    req = req.eq('active', isActive);
-  }
+
+  const activeFilter =
+    query.active !== undefined
+      ? query.active === 'true' || query.active === true
+      : true;
+  req = req.eq('active', activeFilter);
   
   const { data, error } = await req;
   if (error) throw error;

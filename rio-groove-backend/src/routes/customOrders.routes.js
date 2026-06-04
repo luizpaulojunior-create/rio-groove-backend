@@ -1,5 +1,6 @@
 const express = require('express');
 const { customOrderUpload } = require('../config/upload');
+const { customOrderLimiter } = require('../middlewares/rate-limit');
 const requireAdminAuth = require('../middlewares/require-admin-auth');
 const requireMinRole = require('../middlewares/require-min-role');
 const {
@@ -15,6 +16,7 @@ const upload = customOrderUpload;
 
 router.post(
   '/api/custom-orders',
+  customOrderLimiter,
   upload.fields([
     { name: 'art_files', maxCount: 8 },
     { name: 'reference_files', maxCount: 5 },

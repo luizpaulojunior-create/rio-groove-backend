@@ -21,14 +21,20 @@ function errorHandler(error, req, res, next) {
   }
 
   const status = error.statusCode || 500;
-  const message = error.message || 'Erro interno do servidor.';
+  const isProd = process.env.NODE_ENV === 'production';
+  const clientMessage =
+    status < 500
+      ? error.message || 'Requisição inválida.'
+      : isProd
+        ? 'Erro interno do servidor.'
+        : error.message || 'Erro interno do servidor.';
 
   return res.status(status).json({
     ok: false,
-    error: message,
-    message,
+    error: clientMessage,
+    message: clientMessage,
     requestId: req.requestId,
-    detail: process.env.NODE_ENV === 'production' ? undefined : error.stack,
+    detail: isProd ? undefined : error.stack,
   });
 }
 
