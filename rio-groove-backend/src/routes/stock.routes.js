@@ -8,7 +8,8 @@ const {
   updateStockItem,
   deleteStockItem,
   adjustStock,
-  seedStockItems
+  seedStockItems,
+  syncYellowStockItems
 } = require('../controllers/stock.controller');
 
 const router = express.Router();
@@ -16,6 +17,7 @@ const router = express.Router();
 router.get('/api/stock', requireAdminAuth, getStock);
 router.get('/api/stock/:id', requireAdminAuth, getStockItem);
 router.post('/api/stock/seed', requireAdminAuth, requireMinRole('superadmin'), seedStockItems);
+router.post('/api/stock/sync-yellow', requireAdminAuth, requireMinRole('superadmin'), syncYellowStockItems);
 router.post('/api/stock', requireAdminAuth, requireMinRole('editor'), createStockItem);
 router.put('/api/stock/:id', requireAdminAuth, requireMinRole('editor'), updateStockItem);
 router.delete('/api/stock/:id', requireAdminAuth, requireMinRole('editor'), deleteStockItem);

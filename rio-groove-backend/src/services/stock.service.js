@@ -249,6 +249,96 @@ const seedStockItems = async () => {
   };
 };
 
+const YELLOW_STOCK_CATEGORIES = ['Camisa', 'Regata', 'Boné'];
+const DEFAULT_YELLOW_QUANTITY = 10;
+
+const syncYellowStockItems = async (quantity = DEFAULT_YELLOW_QUANTITY) => {
+  const targetQty = Number(quantity);
+  if (!Number.isInteger(targetQty) || targetQty < 0) {
+    throw new Error('Quantidade inválida para sincronização do estoque amarelo.');
+  }
+
+  const yellowDefaults = {
+    ...SEED_DEFAULTS,
+    quantity: targetQty,
+    min_stock: SEED_DEFAULTS.min_stock,
+    is_active: true
+  };
+
+  const itemsToSync = buildOperationalStockItems(yellowDefaults).filter(
+    (item) =>
+      item.color_key === 'yel' &&
+      YELLOW_STOCK_CATEGORIES.includes(normalizeCategory(item.category))
+  );
+
+  const { data: existing, error: fetchErr } = await supabase
+    .from('stock_items')
+    .select('category, gender, model, fabric, color_key, size');
+
+  if (fetchErr) {
+    if (fetchErr.code === 'PGRST205') {
+      throw new Error('Tabela stock_items não existe. Execute o script SQL no Supabase.');
+    }
+    throw fetchErr;
+  }
+
+  const existingSet = new Set(
+    (existing || []).map((row) =>
+      stockDedupKey({
+        category: normalizeCategory(row.category),
+        gender: row.gender,
+        model: row.model,
+        fabric: row.fabric,
+        color_key: row.color_key,
+        size: row.size
+      })
+    )
+  );
+
+  const newItems = itemsToSync
+    .filter((item) => !existingSet.has(stockDedupKey(item)))
+    .map((item) => {
+      const cat = normalizeCategory(item.category);
+      return {
+        ...item,
+        gender: item.gender || GENDER_NEUTRAL,
+        fabric: item.fabric || (categoryUsesFabric(cat) ? 'Lisa' : FABRIC_NEUTRAL),
+        quantity: targetQty
+      };
+    });
+
+  const BATCH_SIZE = 200;
+  for (let i = 0; i < newItems.length; i += BATCH_SIZE) {
+    const batch = newItems.slice(i, i + BATCH_SIZE);
+    const { error: insertErr } = await supabase.from('stock_items').insert(batch);
+    if (insertErr) throw insertErr;
+  }
+
+  const { data: updatedRows, error: updateErr } = await supabase
+    .from('stock_items')
+    .update({ quantity: targetQty })
+    .eq('color_key', 'yel')
+    .in('category', YELLOW_STOCK_CATEGORIES)
+    .select('id');
+
+  if (updateErr) throw updateErr;
+
+  const message =
+    newItems.length > 0
+      ? `${newItems.length} SKUs amarelos criados e ${(updatedRows || []).length} itens ajustados para ${targetQty} un.`
+      : `${(updatedRows || []).length} SKUs amarelos ajustados para ${targetQty} un.`;
+
+  return {
+    total_expected: itemsToSync.length,
+    total_created: newItems.length,
+    total_updated: (updatedRows || []).length,
+    quantity: targetQty,
+    categories: YELLOW_STOCK_CATEGORIES,
+    sample_skus: itemsToSync.slice(0, 8).map((item) => item.sku),
+    message
+  };
+};
+
 module.exports = {
   getStock,
   getStockItem,
@@ -258,5 +348,6 @@ module.exports = {
   adjustStock,
   decrementStockIfAvailable,
   incrementStock,
-  seedStockItems
+  seedStockItems,
+  syncYellowStockItems
 };

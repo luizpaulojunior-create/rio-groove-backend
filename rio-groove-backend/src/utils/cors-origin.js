@@ -40,13 +40,23 @@ function isKnownPagesDevOrigin(origin) {
   }
 }
 
+function isNativeAppOrigin(origin) {
+  return [
+    'https://localhost',
+    'http://localhost',
+    'capacitor://localhost',
+    'ionic://localhost',
+  ].includes(origin);
+}
+
 function isLocalDevOrigin(origin) {
-  return /^https?:\/\/(localhost|127\.0\.0\.1):\d+$/i.test(origin);
+  return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin);
 }
 
 function isOriginAllowed(origin, allowedOrigins = buildAllowedOrigins()) {
   if (!origin) return true;
   if (allowedOrigins.includes(origin)) return true;
+  if (isNativeAppOrigin(origin)) return true;
   if (isKnownPagesDevOrigin(origin)) return true;
   if (process.env.NODE_ENV !== 'production' && isLocalDevOrigin(origin)) return true;
   return false;

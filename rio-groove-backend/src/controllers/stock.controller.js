@@ -62,6 +62,16 @@ const seedStockItems = asyncHandler(async (req, res) => {
   }
 });
 
+const syncYellowStockItems = asyncHandler(async (req, res) => {
+  try {
+    const quantity = req.body?.quantity ?? 10;
+    const result = await stockService.syncYellowStockItems(quantity);
+    return res.json(result);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Erro ao sincronizar estoque amarelo' });
+  }
+});
+
 module.exports = {
   getStock,
   getStockItem,
@@ -69,5 +79,6 @@ module.exports = {
   updateStockItem,
   deleteStockItem,
   adjustStock,
-  seedStockItems
+  seedStockItems,
+  syncYellowStockItems
 };

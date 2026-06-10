@@ -9,6 +9,7 @@ function mapColorKeyFromVariant(colorVariant) {
   if (norm === 'off white' || compact === 'offwhite' || compact === 'off') return 'off';
   if (norm === 'vermelho' || norm === 'red') return 'red';
   if (norm === 'verde' || norm === 'green') return 'grn';
+  if (norm === 'amarelo' || norm === 'yellow') return 'yel';
   return null;
 }
 
@@ -21,6 +22,7 @@ function mapColorKeyToVariant(colorKey) {
     off: 'Off White',
     grn: 'Verde',
     red: 'Vermelho',
+    yel: 'Amarelo',
   };
   return map[k] || null;
 }
@@ -37,6 +39,8 @@ function normalizeColorVariantLabel(value) {
     offwhite: 'Off White',
     vermelho: 'Vermelho',
     verde: 'Verde',
+    amarelo: 'Amarelo',
+    yellow: 'Amarelo',
   };
   return map[norm] || String(value).trim();
 }
