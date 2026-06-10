@@ -13,8 +13,6 @@ const env = {
   mercadoPagoPublicKey: process.env.MERCADO_PAGO_PUBLIC_KEY || '',
   mercadoPagoAccessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN || '',
   mercadoPagoWebhookSecret: process.env.MERCADO_PAGO_WEBHOOK_SECRET || '',
-  stripeSecretKey: process.env.STRIPE_SECRET_KEY || '',
-  stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
   smtpHost: process.env.SMTP_HOST || '',
   smtpPort: Number(process.env.SMTP_PORT || 587),
   smtpSecure: process.env.SMTP_SECURE === 'true',
@@ -64,17 +62,6 @@ const missing = required.filter(([, value]) => !value).map(([key]) => key);
 
 if (missing.length) {
   throw new Error(`Variáveis obrigatórias ausentes: ${missing.join(', ')}`);
-}
-
-function looksLikePlaceholder(value) {
-  return !value || /placeholder|xxxx|seu_|your_/i.test(String(value));
-}
-
-const stripeConfigured =
-  Boolean(env.stripeSecretKey) && !looksLikePlaceholder(env.stripeSecretKey);
-
-if (env.nodeEnv === 'production' && stripeConfigured && !env.stripeWebhookSecret) {
-  throw new Error('STRIPE_WEBHOOK_SECRET é obrigatório em produção quando Stripe está ativo');
 }
 
 module.exports = env;

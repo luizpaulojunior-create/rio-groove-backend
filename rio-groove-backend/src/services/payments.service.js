@@ -24,77 +24,6 @@ const MP_API_BASE = 'https://api.mercadopago.com';
 
 const processingWebhooks = new Set();
 
-async function processStripeWebhook(req) {
-  const stripe = require('stripe')(env.stripeSecretKey);
-  const sig = req.headers['stripe-signature'];
-
-  let event;
-  try {
-    event = stripe.webhooks.constructEvent(req.body, sig, env.stripeWebhookSecret);
-  } catch (err) {
-    console.error(`[PaymentsService] Error na assinatura do webhook do Stripe: ${err.message}`);
-    throw new Error(`Webhook Error: ${err.message}`);
-  }
-
-  console.log(`[PaymentsService] Stripe Webhook Recebido: ${event.type}`);
-
-  if (event.type === 'checkout.session.completed') {
-    const session = event.data.object;
-    const externalReference = session.client_reference_id || session.metadata?.external_reference || session.metadata?.order_id;
-    
-    if (!externalReference) {
-      console.warn('[PaymentsService] Webhook Stripe sem external_reference');
-      return { ignored: true, reason: 'Sem external_reference' };
-    }
-
-    if (processingWebhooks.has(externalReference)) {
-      return { ignored: true, reason: 'Race condition prevenida. Webhook simultâneo.' };
-    }
-    processingWebhooks.add(externalReference);
-    setTimeout(() => processingWebhooks.delete(externalReference), 30000);
-
-    const existingOrder = await getOrderByReference(externalReference);
-    
-    if (!existingOrder) {
-      processingWebhooks.delete(externalReference);
-      return { ignored: true, reason: 'Pedido não encontrado.' };
-    }
-
-    if (existingOrder.status === 'paid') {
-      processingWebhooks.delete(externalReference);
-      return { ignored: true, reason: 'Pedido já processado.' };
-    }
-
-    const updatedOrder = await updateOrderByExternalReference(existingOrder.external_reference, {
-      status: 'paid',
-      payment_status: 'approved',
-      paid_at: new Date().toISOString(),
-      fulfillment_status: 'pagamento_aprovado',
-      stripe_payment_intent_id: session.payment_intent || session.id,
-      payment_payload: session
-    });
-
-    try {
-      const orderWithItems = await getOrderWithItems(existingOrder.external_reference);
-      await deductStockForOrder(orderWithItems, orderWithItems.items || []);
-      await incrementCouponUsage(orderWithItems.coupon_id, orderWithItems.coupon_code);
-    } catch (error) {
-      console.error('[PaymentsService] Falha na baixa de estoque/cupom (Stripe):', error.message);
-    }
-
-    processingWebhooks.delete(externalReference);
-
-    return {
-      ignored: false,
-      order: updatedOrder,
-      paymentId: session.payment_intent || session.id,
-      paymentStatus: 'approved'
-    };
-  }
-
-  return { ignored: true, reason: 'Unhandled event type' };
-}
-
 function extractNotificationInfo(req) {
   const rawTopic = req.body?.type || req.query.type || req.query.topic || req.body?.topic || '';
   const rawAction = req.body?.action || req.query.action || '';
@@ -555,6 +484,5 @@ async function processMercadoPagoWebhook(req) {
 module.exports = {
   extractNotificationInfo,
   processMercadoPagoWebhook,
-  processStripeWebhook,
   reconcileMercadoPagoReturn,
 };
