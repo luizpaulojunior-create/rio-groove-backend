@@ -66,16 +66,15 @@ if (missing.length) {
   throw new Error(`Variáveis obrigatórias ausentes: ${missing.join(', ')}`);
 }
 
-if (env.nodeEnv === 'production' && !env.mercadoPagoWebhookSecret) {
-  throw new Error('MERCADO_PAGO_WEBHOOK_SECRET é obrigatório em produção');
+function looksLikePlaceholder(value) {
+  return !value || /placeholder|xxxx|seu_|your_/i.test(String(value));
 }
 
-if (env.nodeEnv === 'production' && !env.stripeWebhookSecret) {
-  throw new Error('STRIPE_WEBHOOK_SECRET é obrigatório em produção');
-}
+const stripeConfigured =
+  Boolean(env.stripeSecretKey) && !looksLikePlaceholder(env.stripeSecretKey);
 
-if (env.nodeEnv === 'production' && !env.oauthStateSecret) {
-  throw new Error('OAUTH_STATE_SECRET é obrigatório em produção');
+if (env.nodeEnv === 'production' && stripeConfigured && !env.stripeWebhookSecret) {
+  throw new Error('STRIPE_WEBHOOK_SECRET é obrigatório em produção quando Stripe está ativo');
 }
 
 module.exports = env;

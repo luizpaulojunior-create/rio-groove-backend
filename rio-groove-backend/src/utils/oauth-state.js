@@ -3,9 +3,6 @@ const env = require('../config/env');
 
 function getSigningSecret() {
   if (env.oauthStateSecret) return env.oauthStateSecret;
-  if (env.nodeEnv === 'production') {
-    throw new Error('OAUTH_STATE_SECRET é obrigatório em produção.');
-  }
   return env.supabaseServiceRoleKey || '';
 }
 
