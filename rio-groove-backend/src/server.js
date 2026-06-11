@@ -4,7 +4,7 @@ initSentry();
 const app = require('./app');
 const env = require('./config/env');
 const { testResend } = require('./services/notifications.service');
-const { syncYellowStockItems, zeroWhiteStockItems } = require('./services/stock.service');
+const { syncYellowStockItems } = require('./services/stock.service');
 
 console.log('[BOOT] Iniciando servidor...');
 console.log('[BOOT] Rotas de shipping carregadas');
@@ -42,13 +42,5 @@ app.listen(env.port, () => {
     })
     .catch((error) => {
       console.error('[BOOT] Yellow stock sync failed:', error.message);
-    });
-
-  zeroWhiteStockItems()
-    .then((result) => {
-      console.log('[BOOT] White stock zero:', result.message);
-    })
-    .catch((error) => {
-      console.error('[BOOT] White stock zero failed:', error.message);
     });
 });
