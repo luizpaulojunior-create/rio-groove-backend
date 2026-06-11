@@ -70,9 +70,10 @@ function isMissingSeoColumnError(error) {
 }
 
 function buildImageRow(img, productId, index) {
+  const colorKey = img.color_key ? String(img.color_key).trim().toLowerCase() : null;
   const colorVariant =
+    (colorKey ? mapColorKeyToVariant(colorKey) : null) ||
     normalizeColorVariantLabel(img.color_variant || img.colorVariant) ||
-    mapColorKeyToVariant(img.color_key) ||
     normalizeColorVariantLabel(img.color_label);
 
   return {
