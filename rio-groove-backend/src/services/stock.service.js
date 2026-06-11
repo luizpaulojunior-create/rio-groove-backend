@@ -339,6 +339,53 @@ const syncYellowStockItems = async (quantity = DEFAULT_YELLOW_QUANTITY) => {
   };
 };
 
+/** Zera estoque operacional da cor White (color_key wht). Não afeta Off White (off). */
+const zeroWhiteStockItems = async () => {
+  const { data: beforeRows, error: beforeErr } = await supabase
+    .from('stock_items')
+    .select('id, sku, category, color_key, quantity')
+    .eq('color_key', 'wht');
+
+  if (beforeErr) {
+    if (beforeErr.code === 'PGRST205') {
+      throw new Error('Tabela stock_items não existe. Execute o script SQL no Supabase.');
+    }
+    throw beforeErr;
+  }
+
+  const rows = beforeRows || [];
+  if (rows.length === 0) {
+    return {
+      total_matched: 0,
+      total_updated: 0,
+      previous_quantity: 0,
+      message: 'Nenhum SKU White (wht) encontrado no estoque.',
+    };
+  }
+
+  const previousQuantity = rows.reduce(
+    (sum, row) => sum + Number(row.quantity ?? row.stock ?? 0),
+    0
+  );
+
+  const { data: updatedRows, error: updateErr } = await supabase
+    .from('stock_items')
+    .update({ quantity: 0 })
+    .eq('color_key', 'wht')
+    .select('id, sku, category');
+
+  if (updateErr) throw updateErr;
+
+  const updated = updatedRows || [];
+  return {
+    total_matched: rows.length,
+    total_updated: updated.length,
+    previous_quantity: previousQuantity,
+    sample_skus: updated.slice(0, 8).map((row) => row.sku),
+    message: `${updated.length} SKUs White (wht) zerados (antes: ${previousQuantity} un. no total).`,
+  };
+};
+
 module.exports = {
   getStock,
   getStockItem,
@@ -349,5 +396,6 @@ module.exports = {
   decrementStockIfAvailable,
   incrementStock,
   seedStockItems,
-  syncYellowStockItems
+  syncYellowStockItems,
+  zeroWhiteStockItems
 };

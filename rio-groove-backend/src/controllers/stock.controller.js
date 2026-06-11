@@ -72,6 +72,15 @@ const syncYellowStockItems = asyncHandler(async (req, res) => {
   }
 });
 
+const zeroWhiteStockItems = asyncHandler(async (req, res) => {
+  try {
+    const result = await stockService.zeroWhiteStockItems();
+    return res.json(result);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Erro ao zerar estoque branco' });
+  }
+});
+
 module.exports = {
   getStock,
   getStockItem,
@@ -80,5 +89,6 @@ module.exports = {
   deleteStockItem,
   adjustStock,
   seedStockItems,
-  syncYellowStockItems
+  syncYellowStockItems,
+  zeroWhiteStockItems
 };
