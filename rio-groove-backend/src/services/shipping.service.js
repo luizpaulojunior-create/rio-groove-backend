@@ -15,6 +15,20 @@ const EXPRESS_NAME_PATTERNS = [
   /urgente/i
 ];
 
+function formatDeliveryTime(option) {
+  const days =
+    parseInt(String(option.custom_delivery_time), 10)
+    || parseInt(String(option.delivery_time), 10)
+    || 0;
+  if (days <= 0) {
+    const raw = String(option.delivery_time || option.deadline || '').trim();
+    if (raw && Number.isNaN(Number(raw))) return raw;
+    return 'A calcular';
+  }
+  if (days === 1) return '1 dia útil';
+  return `${days} dias úteis`;
+}
+
 function normalizeOption(option) {
   const companyName = option.company?.name || option.company || 'Melhor Envio';
   const serviceName = option.name || option.service || 'Entrega';
@@ -25,7 +39,10 @@ function normalizeOption(option) {
     company: companyName,
     label: `${companyName} / ${serviceName}`,
     price: Number(option.price) || 0,
-    delivery_time: option.delivery_time || option.deadline || '',
+    delivery_time: formatDeliveryTime(option),
+    delivery_days: parseInt(String(option.custom_delivery_time), 10)
+      || parseInt(String(option.delivery_time), 10)
+      || 0,
     currency: option.currency || 'BRL',
     service_code: option.service_code || ''
   };
