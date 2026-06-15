@@ -17,6 +17,7 @@ const {
   approveCustomOrder,
   payArtFee,
   payProduct,
+  quoteCustomOrderShipping,
 } = require('../controllers/customOrders.controller');
 
 const router = express.Router();
@@ -68,6 +69,13 @@ router.post(
   requireAdminAuth,
   requireMinRole('editor'),
   incrementRevision,
+);
+
+router.post(
+  '/api/custom-orders/:id/shipping-quote',
+  requireAdminAuth,
+  requireMinRole('editor'),
+  quoteCustomOrderShipping,
 );
 
 module.exports = router;

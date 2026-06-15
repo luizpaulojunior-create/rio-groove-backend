@@ -4,6 +4,9 @@ const { uploadCustomOrderFile, uploadImage } = require('./upload.service');
 const { STORAGE_BUCKET, STORAGE_PATHS } = require('../config/storage');
 const { validateCustomOrderPayload, VALID_STATUSES } = require('../config/customProducts');
 const { computeOrderPricing, getProductPaymentTotal } = require('../config/customPricing');
+const { getCustomOrderPackage } = require('../config/customShipping');
+const { getShippingQuote } = require('./shipping.service');
+const { onlyDigits } = require('../utils/order');
 const { createCustomOrderPaymentPreference, parseCustomPaymentRef } = require('./customOrdersPayment.service');
 
 function generateProtocol() {
@@ -147,6 +150,7 @@ async function createCustomOrder(body, files = [], user = null) {
     style_reference: body.style_reference?.trim() || null,
     usage_type: body.usage_type?.trim() || null,
     customer_notes: body.customer_notes?.trim() || null,
+    shipping_cep: onlyDigits(body.shipping_cep || '') || null,
     rights_confirmed: body.rights_confirmed === true || body.rights_confirmed === 'true',
     art_fee_amount: body.order_type === 'exclusive_art' ? pricing.artFee : 0,
     product_unit_amount: pricing.productUnit,
@@ -275,12 +279,18 @@ async function getCustomOrderByToken(token) {
 
 async function updateCustomOrder(id, patch, mockupFile = null) {
   const allowed = [
-    'status', 'admin_notes', 'shipping_amount', 'revision_count', 'max_revisions',
+    'status', 'admin_notes', 'shipping_amount', 'shipping_cep',
+    'shipping_method', 'shipping_service_id', 'revision_count', 'max_revisions',
   ];
 
   const updates = { updated_at: new Date().toISOString() };
   for (const key of allowed) {
     if (patch[key] !== undefined && patch[key] !== '') updates[key] = patch[key];
+  }
+
+  if (updates.shipping_cep !== undefined) {
+    const cep = onlyDigits(updates.shipping_cep);
+    updates.shipping_cep = cep.length === 8 ? cep : null;
   }
 
   if (updates.status && !VALID_STATUSES.includes(updates.status)) {
@@ -320,6 +330,37 @@ async function updateCustomOrder(id, patch, mockupFile = null) {
   if (error) throw new Error(error.message);
 
   return getCustomOrderById(id);
+}
+
+async function quoteCustomOrderShipping(id, cepOverride) {
+  const order = await getCustomOrderById(id);
+  if (!order) {
+    const err = new Error('Pedido não encontrado.');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const cep = onlyDigits(cepOverride || order.shipping_cep || '');
+  if (cep.length !== 8) {
+    const err = new Error('Informe um CEP válido (8 dígitos) para cotar o frete.');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const pkg = getCustomOrderPackage(order);
+  const options = await getShippingQuote({
+    cep,
+    weight: pkg.weight,
+    height: pkg.height,
+    width: pkg.width,
+    length: pkg.length,
+  });
+
+  return {
+    cep,
+    package: pkg,
+    options: options || [],
+  };
 }
 
 async function incrementRevision(id) {
@@ -492,6 +533,7 @@ module.exports = {
   getCustomOrderForCustomer,
   getCustomOrderByToken,
   updateCustomOrder,
+  quoteCustomOrderShipping,
   incrementRevision,
   approveCustomOrderForProduction,
   startArtFeePayment,

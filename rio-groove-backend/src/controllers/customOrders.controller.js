@@ -162,6 +162,21 @@ async function payProduct(req, res, next) {
   }
 }
 
+async function quoteCustomOrderShipping(req, res, next) {
+  try {
+    const result = await customOrdersService.quoteCustomOrderShipping(
+      req.params.id,
+      req.body?.cep,
+    );
+    res.json(result);
+  } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ ok: false, error: err.message });
+    }
+    next(err);
+  }
+}
+
 module.exports = {
   submitCustomOrder,
   listCustomOrders,
@@ -174,4 +189,5 @@ module.exports = {
   approveCustomOrder,
   payArtFee,
   payProduct,
+  quoteCustomOrderShipping,
 };
