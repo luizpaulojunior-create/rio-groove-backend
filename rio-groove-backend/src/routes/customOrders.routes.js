@@ -3,12 +3,20 @@ const { customOrderUpload } = require('../config/upload');
 const { customOrderLimiter, customOrderTrackLimiter } = require('../middlewares/rate-limit');
 const requireAdminAuth = require('../middlewares/require-admin-auth');
 const requireMinRole = require('../middlewares/require-min-role');
+const requireCustomerAuth = require('../middlewares/require-customer-auth');
+const optionalCustomerAuth = require('../middlewares/optional-customer-auth');
 const {
   submitCustomOrder,
   listCustomOrders,
+  listMyCustomOrders,
   getCustomOrder,
+  getMyCustomOrder,
   getCustomOrderPublic,
   patchCustomOrder,
+  incrementRevision,
+  approveCustomOrder,
+  payArtFee,
+  payProduct,
 } = require('../controllers/customOrders.controller');
 
 const router = express.Router();
@@ -17,6 +25,7 @@ const upload = customOrderUpload;
 router.post(
   '/api/custom-orders',
   customOrderLimiter,
+  optionalCustomerAuth,
   upload.fields([
     { name: 'art_files', maxCount: 8 },
     { name: 'reference_files', maxCount: 5 },
@@ -25,6 +34,12 @@ router.post(
 );
 
 router.get('/api/custom-orders/track/:token', customOrderTrackLimiter, getCustomOrderPublic);
+
+router.get('/api/custom-orders/mine', requireCustomerAuth, listMyCustomOrders);
+router.get('/api/custom-orders/mine/:id', requireCustomerAuth, getMyCustomOrder);
+router.post('/api/custom-orders/mine/:id/pay-art', requireCustomerAuth, payArtFee);
+router.post('/api/custom-orders/mine/:id/approve', requireCustomerAuth, approveCustomOrder);
+router.post('/api/custom-orders/mine/:id/pay-product', requireCustomerAuth, payProduct);
 
 router.get(
   '/api/custom-orders',
@@ -46,6 +61,13 @@ router.patch(
   requireMinRole('editor'),
   upload.single('mockup'),
   patchCustomOrder,
+);
+
+router.post(
+  '/api/custom-orders/:id/revisions',
+  requireAdminAuth,
+  requireMinRole('editor'),
+  incrementRevision,
 );
 
 module.exports = router;

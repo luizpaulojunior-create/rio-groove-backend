@@ -132,6 +132,16 @@ async function applyMercadoPagoPaymentUpdate(payment, merchantOrder = null, opti
 
   const externalReference = getNotificationReference(payment, merchantOrder);
   console.log('[PaymentsService] external_reference encontrado', externalReference);
+
+  const { parseCustomPaymentRef } = require('./customOrdersPayment.service');
+  const customRef = parseCustomPaymentRef(externalReference);
+  if (customRef) {
+    const { applyCustomOrderPaymentUpdate } = require('./customOrders.service');
+    const result = await applyCustomOrderPaymentUpdate(payment);
+    console.log('[PaymentsService] Pagamento personalizado processado', result);
+    return result;
+  }
+
   if (!externalReference) {
     console.warn('[PaymentsService] Retornando cedo: external_reference não encontrado');
     return { ignored: true, reason: 'external_reference não encontrado.' };

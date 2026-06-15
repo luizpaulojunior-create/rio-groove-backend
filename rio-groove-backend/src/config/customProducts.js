@@ -25,8 +25,8 @@ const VALID_INSUMOS = ['Camisa', 'Cropped', 'Regata', 'Bon√©', 'Caneca', 'Acess√
 const VALID_ORDER_TYPES = ['ready_art', 'exclusive_art'];
 
 const VALID_STATUSES = [
-  'received', 'reviewing', 'quoted', 'mockup_sent', 'awaiting_approval',
-  'awaiting_payment', 'paid', 'in_production', 'shipped', 'completed', 'cancelled',
+  'received', 'reviewing', 'mockup_ready', 'art_paid',
+  'awaiting_product_payment', 'in_production', 'shipped', 'completed', 'cancelled',
 ];
 
 function isCroppedOrder(body) {
