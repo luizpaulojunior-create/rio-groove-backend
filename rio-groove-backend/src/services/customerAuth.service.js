@@ -158,53 +158,32 @@ async function createCustomerSession(email) {
 
   if (error) throw error;
 
-  const token =
-    new URL(data.properties.action_link).searchParams.get('token')
-    || data.properties.hashed_token;
-
+  const tokenHash = data.properties.hashed_token;
   const apiKey = env.supabaseAnonKey || env.supabaseServiceRoleKey;
-  if (!apiKey) {
-    const err = new Error('Autenticação indisponível no servidor.');
-    err.statusCode = 503;
-    throw err;
-  }
-
-  const verifyRes = await fetch(`${env.supabaseUrl}/auth/v1/verify`, {
-    method: 'POST',
-    headers: {
-      apikey: apiKey,
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      type: 'magiclink',
-      token,
-      email: normalized,
-    }),
+  const authClient = createClient(env.supabaseUrl, apiKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const payload = await verifyRes.json().catch(() => ({}));
-  if (!verifyRes.ok) {
-    const err = new Error(payload.msg || payload.error_description || payload.message || 'Falha ao iniciar sessão.');
+  const { data: authData, error: verifyError } = await authClient.auth.verifyOtp({
+    type: 'magiclink',
+    token_hash: tokenHash,
+  });
+
+  if (verifyError) {
+    const err = new Error(verifyError.message || 'Falha ao iniciar sessão.');
     err.statusCode = 401;
     throw err;
   }
 
-  if (!payload.access_token || !payload.refresh_token) {
+  if (!authData.session?.access_token) {
     const err = new Error('Sessão inválida retornada pelo auth.');
     err.statusCode = 500;
     throw err;
   }
 
   return {
-    user: payload.user || null,
-    session: {
-      access_token: payload.access_token,
-      refresh_token: payload.refresh_token,
-      expires_in: payload.expires_in,
-      token_type: payload.token_type,
-      user: payload.user,
-    },
+    user: authData.user,
+    session: authData.session,
   };
 }
 
