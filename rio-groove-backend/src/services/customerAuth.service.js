@@ -261,12 +261,22 @@ async function activateCustomerLogin({ email, password, metadata = {} }) {
   }
 
   const access = await ensureAccountAccess(user, { password, metadata });
-  const allowMagicLinkFallback = access.resynced || isIncompleteAccount(user);
+
+  if (access.resynced) {
+    const login = await createCustomerSession(normalized);
+    return {
+      ok: true,
+      confirmed: true,
+      alreadyConfirmed: Boolean(user.email_confirmed_at),
+      user: login.user,
+      session: login.session,
+    };
+  }
 
   const login = await signInCustomer({
     email: normalized,
     password,
-    allowMagicLinkFallback,
+    allowMagicLinkFallback: true,
   });
 
   return {

@@ -10,10 +10,25 @@ async function registerCustomer(req, res, next) {
     });
 
     try {
+      if (result.resynced) {
+        const login = await customerAuthService.createCustomerSession(email);
+        return res.status(result.status === 'created' ? 201 : 200).json({
+          ok: true,
+          status: result.status,
+          message:
+            result.status === 'created'
+              ? 'Conta criada com sucesso.'
+              : 'Conta recuperada. Login realizado.',
+          email: result.email,
+          user: login.user,
+          session: login.session,
+        });
+      }
+
       const login = await customerAuthService.signInCustomer({
         email,
         password,
-        allowMagicLinkFallback: result.status === 'created' || Boolean(result.resynced),
+        allowMagicLinkFallback: result.status === 'created',
       });
       return res.status(result.status === 'created' ? 201 : 200).json({
         ok: true,
