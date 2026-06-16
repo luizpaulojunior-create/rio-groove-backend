@@ -44,7 +44,7 @@ const VALID_CANECA_SKU = 'MUG-330-WHT-U';
 
 const FABRICS = ['Lisa', 'Estonada'];
 
-const APPAREL_SIZES = ['P', 'M', 'G', 'GG', 'XGG'];
+const APPAREL_SIZES = ['P', 'M', 'G', 'GG'];
 const ONE_SIZE = 'Tamanho Único';
 
 const COLORS = [
