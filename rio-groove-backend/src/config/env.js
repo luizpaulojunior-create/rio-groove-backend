@@ -9,7 +9,11 @@ const env = {
   backendUrl: (process.env.BACKEND_URL || '').replace(/\/$/, ''),
   supabaseUrl: process.env.SUPABASE_URL || '',
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY || '',
-  supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+  supabaseServiceRoleKey:
+    process.env.SUPABASE_SERVICE_ROLE_KEY
+    || process.env.SUPABASE_SECRET_KEY
+    || process.env.SB_SECRET_KEY
+    || '',
   mercadoPagoPublicKey: process.env.MERCADO_PAGO_PUBLIC_KEY || '',
   mercadoPagoAccessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN || '',
   mercadoPagoWebhookSecret: process.env.MERCADO_PAGO_WEBHOOK_SECRET || '',

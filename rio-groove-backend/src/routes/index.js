@@ -16,6 +16,7 @@ const stockRoutes = require('./stock.routes');
 const analyticsRoutes = require('./analytics.routes');
 const customOrdersRoutes = require('./customOrders.routes');
 const couponsRoutes = require('./coupons.routes');
+const customerAuthRoutes = require('./customerAuth.routes');
 
 const router = express.Router();
 
@@ -27,6 +28,7 @@ router.post(
 );
 
 router.use('/auth', authRoutes);
+router.use('/api/customer-auth', customerAuthRoutes);
 router.use(healthRoutes);
 router.use(configRoutes);
 router.use(checkoutRoutes);
