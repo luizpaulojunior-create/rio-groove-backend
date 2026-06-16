@@ -109,11 +109,20 @@ async function registerCustomer({ email, password, metadata = {} }) {
 
   const existing = await findUserByEmail(normalized);
   if (existing) {
-    const access = await ensureAccountAccess(existing, { password, metadata });
+    const { error: updateError } = await supabase.auth.admin.updateUserById(existing.id, {
+      email_confirm: true,
+      password,
+      user_metadata: {
+        ...(existing.user_metadata || {}),
+        ...metadata,
+      },
+    });
+    if (updateError) throw updateError;
+
     return {
       status: 'existing',
       email: normalized,
-      resynced: access.resynced,
+      resynced: true,
     };
   }
 
@@ -260,29 +269,22 @@ async function activateCustomerLogin({ email, password, metadata = {} }) {
     throw err;
   }
 
-  const access = await ensureAccountAccess(user, { password, metadata });
-
-  if (access.resynced) {
-    const login = await createCustomerSession(normalized);
-    return {
-      ok: true,
-      confirmed: true,
-      alreadyConfirmed: Boolean(user.email_confirmed_at),
-      user: login.user,
-      session: login.session,
-    };
-  }
-
-  const login = await signInCustomer({
-    email: normalized,
+  const { error: updateError } = await supabase.auth.admin.updateUserById(user.id, {
+    email_confirm: true,
     password,
-    allowMagicLinkFallback: true,
+    user_metadata: {
+      ...(user.user_metadata || {}),
+      ...metadata,
+    },
   });
+  if (updateError) throw updateError;
+
+  const login = await createCustomerSession(normalized);
 
   return {
     ok: true,
     confirmed: true,
-    alreadyConfirmed: Boolean(user.email_confirmed_at && user.last_sign_in_at),
+    alreadyConfirmed: Boolean(user.email_confirmed_at),
     user: login.user,
     session: login.session,
   };
