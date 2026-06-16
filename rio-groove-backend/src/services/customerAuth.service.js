@@ -35,6 +35,35 @@ async function findUserByEmail(email) {
   return null;
 }
 
+function isIncompleteAccount(user) {
+  if (!user) return false;
+  return !user.last_sign_in_at || !user.email_confirmed_at;
+}
+
+async function ensureAccountAccess(user, { password, metadata = {} }) {
+  if (!isIncompleteAccount(user)) {
+    if (!user.email_confirmed_at) {
+      const { error } = await supabase.auth.admin.updateUserById(user.id, {
+        email_confirm: true,
+      });
+      if (error) throw error;
+    }
+    return { resynced: false };
+  }
+
+  const { error } = await supabase.auth.admin.updateUserById(user.id, {
+    email_confirm: true,
+    password,
+    user_metadata: {
+      ...(user.user_metadata || {}),
+      ...metadata,
+    },
+  });
+
+  if (error) throw error;
+  return { resynced: true };
+}
+
 async function confirmUserEmail(email) {
   const normalized = normalizeEmail(email);
   if (!normalized) {
@@ -79,9 +108,7 @@ async function registerCustomer({ email, password, metadata = {} }) {
 
   const existing = await findUserByEmail(normalized);
   if (existing) {
-    if (!existing.email_confirmed_at) {
-      await supabase.auth.admin.updateUserById(existing.id, { email_confirm: true });
-    }
+    await ensureAccountAccess(existing, { password, metadata });
     return { status: 'existing', email: normalized };
   }
 
@@ -143,23 +170,25 @@ async function signInCustomer({ email, password }) {
   };
 }
 
-async function activateCustomerLogin({ email, password }) {
+async function activateCustomerLogin({ email, password, metadata = {} }) {
   const normalized = normalizeEmail(email);
   assertPassword(password);
 
-  const confirmResult = await confirmUserEmail(normalized);
-  if (confirmResult.reason === 'not_found') {
+  const user = await findUserByEmail(normalized);
+  if (!user) {
     const err = new Error('Conta não encontrada para este e-mail.');
     err.statusCode = 404;
     throw err;
   }
+
+  await ensureAccountAccess(user, { password, metadata });
 
   const login = await signInCustomer({ email: normalized, password });
 
   return {
     ok: true,
     confirmed: true,
-    alreadyConfirmed: Boolean(confirmResult.already),
+    alreadyConfirmed: Boolean(user.email_confirmed_at && user.last_sign_in_at),
     user: login.user,
     session: login.session,
   };
