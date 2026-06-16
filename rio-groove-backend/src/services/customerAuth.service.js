@@ -108,8 +108,12 @@ async function registerCustomer({ email, password, metadata = {} }) {
 
   const existing = await findUserByEmail(normalized);
   if (existing) {
-    await ensureAccountAccess(existing, { password, metadata });
-    return { status: 'existing', email: normalized };
+    const access = await ensureAccountAccess(existing, { password, metadata });
+    return {
+      status: 'existing',
+      email: normalized,
+      resynced: access.resynced,
+    };
   }
 
   const { data, error } = await supabase.auth.admin.createUser({
@@ -135,11 +139,48 @@ async function registerCustomer({ email, password, metadata = {} }) {
   };
 }
 
-async function signInCustomer({ email, password }) {
+async function createCustomerSession(email) {
+  const normalized = normalizeEmail(email);
+  const { data, error } = await supabase.auth.admin.generateLink({
+    type: 'magiclink',
+    email: normalized,
+  });
+
+  if (error) throw error;
+
+  const apiKey = env.supabaseAnonKey || env.supabaseServiceRoleKey;
+  if (!apiKey) {
+    const err = new Error('Autenticação indisponível no servidor.');
+    err.statusCode = 503;
+    throw err;
+  }
+
+  const authClient = createClient(env.supabaseUrl, apiKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  const { data: authData, error: verifyError } = await authClient.auth.verifyOtp({
+    email: normalized,
+    token: data.properties.email_otp,
+    type: 'email',
+  });
+
+  if (verifyError) throw verifyError;
+
+  return {
+    user: authData.user,
+    session: authData.session,
+  };
+}
+
+async function signInCustomer({ email, password, allowMagicLinkFallback = false }) {
   const normalized = normalizeEmail(email);
   assertPassword(password);
 
   if (!env.supabaseAnonKey) {
+    if (allowMagicLinkFallback) {
+      return createCustomerSession(normalized);
+    }
     const err = new Error('Autenticação indisponível no servidor.');
     err.statusCode = 503;
     throw err;
@@ -154,20 +195,32 @@ async function signInCustomer({ email, password }) {
     password,
   });
 
-  if (error) {
-    const msg = String(error.message || '').toLowerCase();
-    if (msg.includes('invalid login') || error.code === 'invalid_credentials') {
-      const err = new Error('E-mail ou senha incorretos.');
-      err.statusCode = 401;
-      throw err;
-    }
-    throw error;
+  if (!error) {
+    return {
+      user: data.user,
+      session: data.session,
+    };
   }
 
-  return {
-    user: data.user,
-    session: data.session,
-  };
+  const msg = String(error.message || '').toLowerCase();
+  const invalidPassword =
+    msg.includes('invalid login') || error.code === 'invalid_credentials';
+
+  if (allowMagicLinkFallback && invalidPassword) {
+    try {
+      return await createCustomerSession(normalized);
+    } catch (magicLinkError) {
+      // fall through to invalid password response
+    }
+  }
+
+  if (invalidPassword) {
+    const err = new Error('E-mail ou senha incorretos.');
+    err.statusCode = 401;
+    throw err;
+  }
+
+  throw error;
 }
 
 async function activateCustomerLogin({ email, password, metadata = {} }) {
@@ -181,9 +234,14 @@ async function activateCustomerLogin({ email, password, metadata = {} }) {
     throw err;
   }
 
-  await ensureAccountAccess(user, { password, metadata });
+  const access = await ensureAccountAccess(user, { password, metadata });
+  const allowMagicLinkFallback = access.resynced || isIncompleteAccount(user);
 
-  const login = await signInCustomer({ email: normalized, password });
+  const login = await signInCustomer({
+    email: normalized,
+    password,
+    allowMagicLinkFallback,
+  });
 
   return {
     ok: true,
@@ -198,4 +256,6 @@ module.exports = {
   registerCustomer,
   activateCustomerLogin,
   confirmUserEmail,
+  signInCustomer,
+  createCustomerSession,
 };

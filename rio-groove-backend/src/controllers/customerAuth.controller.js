@@ -10,7 +10,11 @@ async function registerCustomer(req, res, next) {
     });
 
     try {
-      const login = await customerAuthService.signInCustomer({ email, password });
+      const login = await customerAuthService.signInCustomer({
+        email,
+        password,
+        allowMagicLinkFallback: result.status === 'created' || Boolean(result.resynced),
+      });
       return res.status(result.status === 'created' ? 201 : 200).json({
         ok: true,
         status: result.status,
