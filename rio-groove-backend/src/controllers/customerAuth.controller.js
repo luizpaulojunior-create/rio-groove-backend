@@ -9,15 +9,38 @@ async function registerCustomer(req, res, next) {
       metadata: metadata && typeof metadata === 'object' ? metadata : {},
     });
 
-    res.status(result.status === 'created' ? 201 : 200).json({
-      ok: true,
-      status: result.status,
-      message:
-        result.status === 'created'
-          ? 'Conta criada com sucesso.'
-          : 'Conta já existia e foi ativada para login.',
-      email: result.email,
-    });
+    try {
+      const login = await customerAuthService.signInCustomer({ email, password });
+      return res.status(result.status === 'created' ? 201 : 200).json({
+        ok: true,
+        status: result.status,
+        message:
+          result.status === 'created'
+            ? 'Conta criada com sucesso.'
+            : 'Conta encontrada. Login realizado.',
+        email: result.email,
+        user: login.user,
+        session: login.session,
+      });
+    } catch (loginError) {
+      if (result.status === 'existing') {
+        return res.status(409).json({
+          ok: false,
+          code: 'EMAIL_ALREADY_EXISTS',
+          message:
+            'Este e-mail já está cadastrado. Faça login com a senha que você usou antes ou redefina a senha.',
+          email: result.email,
+        });
+      }
+
+      return res.status(result.status === 'created' ? 201 : 200).json({
+        ok: true,
+        status: result.status,
+        needsLogin: true,
+        message: 'Conta criada, mas não foi possível iniciar a sessão automaticamente.',
+        email: result.email,
+      });
+    }
   } catch (err) {
     next(err);
   }
