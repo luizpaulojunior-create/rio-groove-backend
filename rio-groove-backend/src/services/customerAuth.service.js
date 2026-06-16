@@ -37,31 +37,32 @@ async function findUserByEmail(email) {
 
 function isIncompleteAccount(user) {
   if (!user) return false;
-  return !user.last_sign_in_at || !user.email_confirmed_at;
+  // Nunca entrou de fato — cadastro antigo pode ter senha/hash inconsistente.
+  return !user.last_sign_in_at;
 }
 
 async function ensureAccountAccess(user, { password, metadata = {} }) {
-  if (!isIncompleteAccount(user)) {
-    if (!user.email_confirmed_at) {
-      const { error } = await supabase.auth.admin.updateUserById(user.id, {
-        email_confirm: true,
-      });
-      if (error) throw error;
-    }
-    return { resynced: false };
+  if (!user.last_sign_in_at) {
+    const { error } = await supabase.auth.admin.updateUserById(user.id, {
+      email_confirm: true,
+      password,
+      user_metadata: {
+        ...(user.user_metadata || {}),
+        ...metadata,
+      },
+    });
+    if (error) throw error;
+    return { resynced: true };
   }
 
-  const { error } = await supabase.auth.admin.updateUserById(user.id, {
-    email_confirm: true,
-    password,
-    user_metadata: {
-      ...(user.user_metadata || {}),
-      ...metadata,
-    },
-  });
+  if (!user.email_confirmed_at) {
+    const { error } = await supabase.auth.admin.updateUserById(user.id, {
+      email_confirm: true,
+    });
+    if (error) throw error;
+  }
 
-  if (error) throw error;
-  return { resynced: true };
+  return { resynced: false };
 }
 
 async function confirmUserEmail(email) {
@@ -148,6 +149,10 @@ async function createCustomerSession(email) {
 
   if (error) throw error;
 
+  const token =
+    new URL(data.properties.action_link).searchParams.get('token')
+    || data.properties.hashed_token;
+
   const apiKey = env.supabaseAnonKey || env.supabaseServiceRoleKey;
   if (!apiKey) {
     const err = new Error('Autenticação indisponível no servidor.');
@@ -155,21 +160,42 @@ async function createCustomerSession(email) {
     throw err;
   }
 
-  const authClient = createClient(env.supabaseUrl, apiKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
+  const verifyRes = await fetch(`${env.supabaseUrl}/auth/v1/verify`, {
+    method: 'POST',
+    headers: {
+      apikey: apiKey,
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      type: 'magiclink',
+      token,
+      email: normalized,
+    }),
   });
 
-  const { data: authData, error: verifyError } = await authClient.auth.verifyOtp({
-    email: normalized,
-    token: data.properties.email_otp,
-    type: 'email',
-  });
+  const payload = await verifyRes.json().catch(() => ({}));
+  if (!verifyRes.ok) {
+    const err = new Error(payload.msg || payload.error_description || payload.message || 'Falha ao iniciar sessão.');
+    err.statusCode = 401;
+    throw err;
+  }
 
-  if (verifyError) throw verifyError;
+  if (!payload.access_token || !payload.refresh_token) {
+    const err = new Error('Sessão inválida retornada pelo auth.');
+    err.statusCode = 500;
+    throw err;
+  }
 
   return {
-    user: authData.user,
-    session: authData.session,
+    user: payload.user || null,
+    session: {
+      access_token: payload.access_token,
+      refresh_token: payload.refresh_token,
+      expires_in: payload.expires_in,
+      token_type: payload.token_type,
+      user: payload.user,
+    },
   };
 }
 
@@ -206,11 +232,11 @@ async function signInCustomer({ email, password, allowMagicLinkFallback = false 
   const invalidPassword =
     msg.includes('invalid login') || error.code === 'invalid_credentials';
 
-  if (allowMagicLinkFallback && invalidPassword) {
+  if (allowMagicLinkFallback && (invalidPassword || !env.supabaseAnonKey)) {
     try {
       return await createCustomerSession(normalized);
     } catch (magicLinkError) {
-      // fall through to invalid password response
+      if (!invalidPassword) throw magicLinkError;
     }
   }
 
