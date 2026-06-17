@@ -16,6 +16,7 @@ const stockRoutes = require('./stock.routes');
 const analyticsRoutes = require('./analytics.routes');
 const customOrdersRoutes = require('./customOrders.routes');
 const couponsRoutes = require('./coupons.routes');
+const insumoCostsRoutes = require('./insumoCosts.routes');
 const customerAuthRoutes = require('./customerAuth.routes');
 
 const router = express.Router();
@@ -42,5 +43,6 @@ router.use(stockRoutes);
 router.use(analyticsRoutes);
 router.use(customOrdersRoutes);
 router.use(couponsRoutes);
+router.use(insumoCostsRoutes);
 
 module.exports = router;

@@ -1,22 +1,10 @@
-/** Preços fixos — personalizados (arte exclusiva + peça DTF). */
+/** Preços personalizados — lê de insumoCosts.service (DB + cache). */
 
-const READY_ART_DISCOUNT = 20;
-
-const EXCLUSIVE_ART_FEE = {
-  Camisa: 79.9,
-  Cropped: 79.9,
-  Regata: 79.9,
-  Caneca: 49.9,
-  Boné: 39.9,
-};
-
-const PRINTED_PRODUCT_PRICE = {
-  Camisa: 99.9,
-  Cropped: 39.9,
-  Regata: 39.9,
-  Boné: 29.9,
-  Caneca: 29.9,
-};
+const {
+  getReadyArtDiscount,
+  getExclusiveArtFee,
+  getPrintedProductUnitPrice,
+} = require('../services/insumoCosts.service');
 
 const APPAREL_INSUMOS = new Set(['Camisa', 'Cropped', 'Regata']);
 
@@ -25,14 +13,6 @@ function resolvePricingInsumo(body) {
     return 'Cropped';
   }
   return body.insumo;
-}
-
-function getExclusiveArtFee(insumo) {
-  return EXCLUSIVE_ART_FEE[insumo] ?? null;
-}
-
-function getPrintedProductUnitPrice(insumo) {
-  return PRINTED_PRODUCT_PRICE[insumo] ?? null;
 }
 
 function getExclusiveArtPackageTotal(insumo) {
@@ -45,7 +25,7 @@ function getExclusiveArtPackageTotal(insumo) {
 function getReadyArtProductUnitPrice(insumo) {
   const exclusiveTotal = getExclusiveArtPackageTotal(insumo);
   if (exclusiveTotal == null) return null;
-  return Math.round((exclusiveTotal - READY_ART_DISCOUNT) * 100) / 100;
+  return Math.round((exclusiveTotal - getReadyArtDiscount()) * 100) / 100;
 }
 
 function computeOrderPricing(body) {
@@ -93,15 +73,13 @@ function getProductPaymentTotal(order) {
 }
 
 module.exports = {
-  READY_ART_DISCOUNT,
-  EXCLUSIVE_ART_FEE,
-  PRINTED_PRODUCT_PRICE,
   APPAREL_INSUMOS,
   resolvePricingInsumo,
   getExclusiveArtFee,
   getPrintedProductUnitPrice,
   getExclusiveArtPackageTotal,
   getReadyArtProductUnitPrice,
+  getReadyArtDiscount,
   computeOrderPricing,
   getProductPaymentTotal,
 };

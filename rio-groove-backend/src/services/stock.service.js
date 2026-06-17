@@ -9,6 +9,7 @@ const {
   categoryUsesFabric,
   classifyLegacyInvalidStockItem
 } = require('../config/inventory');
+const { getBlankUnitCosts } = require('./insumoCosts.service');
 
 const getStock = async () => {
   const { data, error } = await supabase.from('stock_items').select('*').order('created_at', { ascending: false });
@@ -177,7 +178,7 @@ const seedStockItems = async () => {
 
   const cleanup = await cleanupLegacyInvalidStockItems();
 
-  const itemsToInsert = buildOperationalStockItems(SEED_DEFAULTS);
+  const itemsToInsert = buildOperationalStockItems(SEED_DEFAULTS, getBlankUnitCosts());
 
   const { data: existing, error: fetchErr } = await supabase
     .from('stock_items')
@@ -265,7 +266,7 @@ const syncYellowStockItems = async (quantity = DEFAULT_YELLOW_QUANTITY) => {
     is_active: true
   };
 
-  const itemsToSync = buildOperationalStockItems(yellowDefaults).filter(
+  const itemsToSync = buildOperationalStockItems(yellowDefaults, getBlankUnitCosts()).filter(
     (item) =>
       item.color_key === 'yel' &&
       YELLOW_STOCK_CATEGORIES.includes(normalizeCategory(item.category))

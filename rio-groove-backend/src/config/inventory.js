@@ -245,7 +245,7 @@ function isLegacyInvalidStockItem(row) {
   return classifyLegacyInvalidStockItem(row) !== null;
 }
 
-function buildOperationalStockItems(defaults = SEED_DEFAULTS) {
+function buildOperationalStockItems(defaults = SEED_DEFAULTS, unitCostByCategory = UNIT_COST_BY_CATEGORY) {
   const items = [];
 
   const pushItem = (item) => {
@@ -255,7 +255,7 @@ function buildOperationalStockItems(defaults = SEED_DEFAULTS) {
       quantity: defaults.quantity,
       min_stock: defaults.min_stock,
       is_active: defaults.is_active,
-      unit_cost: UNIT_COST_BY_CATEGORY[item.category] ?? UNIT_COST_BY_CATEGORY.Camisa
+      unit_cost: unitCostByCategory[item.category] ?? unitCostByCategory.Camisa
     });
   };
 

@@ -5,6 +5,7 @@ const app = require('./app');
 const env = require('./config/env');
 const { testResend } = require('./services/notifications.service');
 const { syncYellowStockItems } = require('./services/stock.service');
+const { loadInsumoCostConfig } = require('./services/insumoCosts.service');
 
 console.log('[BOOT] Iniciando servidor...');
 console.log('[BOOT] Rotas de shipping carregadas');
@@ -35,6 +36,14 @@ if (env.nodeEnv === 'development' || process.env.RUN_BOOT_TESTS === 'true') {
 
 app.listen(env.port, () => {
   console.log(`Rio Groove Store Backend rodando na porta ${env.port}`);
+
+  loadInsumoCostConfig()
+    .then(() => {
+      console.log('[BOOT] Insumo cost config loaded');
+    })
+    .catch((error) => {
+      console.error('[BOOT] Insumo cost config failed:', error.message);
+    });
 
   syncYellowStockItems(10)
     .then((result) => {
