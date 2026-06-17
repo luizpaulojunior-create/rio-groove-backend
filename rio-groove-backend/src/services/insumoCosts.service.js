@@ -36,6 +36,14 @@ const DEFAULT_CONFIG = {
       Caneca: 29.9,
     },
   },
+  catalog_selling_price: {
+    Camisa: 0,
+    Regata: 0,
+    Boné: 0,
+    Caneca: 0,
+    Acessório: 0,
+  },
+  dre_monthly_expenses: {},
 };
 
 let cachedConfig = null;
@@ -54,6 +62,22 @@ function mergeNumericMap(defaults, overrides) {
     if (overrides[key] !== undefined && overrides[key] !== null && overrides[key] !== '') {
       result[key] = parseMoney(overrides[key], defaults[key]);
     }
+  }
+  return result;
+}
+
+function normalizeExpensesMap(raw) {
+  if (!raw || typeof raw !== 'object') return {};
+  const result = {};
+  for (const [monthKey, values] of Object.entries(raw)) {
+    if (!values || typeof values !== 'object') continue;
+    result[monthKey] = {
+      payroll: parseMoney(values.payroll, 0),
+      marketing: parseMoney(values.marketing, 0),
+      rent: parseMoney(values.rent, 0),
+      utilities: parseMoney(values.utilities, 0),
+      other: parseMoney(values.other, 0),
+    };
   }
   return result;
 }
@@ -79,6 +103,11 @@ function normalizeConfig(raw) {
         selling.printed_product_price,
       ),
     },
+    catalog_selling_price: mergeNumericMap(
+      DEFAULT_CONFIG.catalog_selling_price,
+      source.catalog_selling_price,
+    ),
+    dre_monthly_expenses: normalizeExpensesMap(source.dre_monthly_expenses),
   };
 }
 

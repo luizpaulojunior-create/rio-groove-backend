@@ -1,5 +1,6 @@
 const asyncHandler = require('../utils/asyncHandler');
 const insumoCostsService = require('../services/insumoCosts.service');
+const { buildUnitEconomics, getMonthlyDre } = require('../services/profitability.service');
 
 const getInsumoCosts = asyncHandler(async (_req, res) => {
   const { config, updated_at } = insumoCostsService.getConfigMeta();
@@ -8,7 +9,13 @@ const getInsumoCosts = asyncHandler(async (_req, res) => {
     updated_at,
     dtf_insumos: insumoCostsService.DTF_INSUMOS,
     defaults: insumoCostsService.DEFAULT_CONFIG,
+    unit_economics: buildUnitEconomics(config),
   });
+});
+
+const getInsumoDre = asyncHandler(async (req, res) => {
+  const dre = await getMonthlyDre(req.query.month);
+  return res.json(dre);
 });
 
 const updateInsumoCosts = asyncHandler(async (req, res) => {
@@ -18,5 +25,6 @@ const updateInsumoCosts = asyncHandler(async (req, res) => {
 
 module.exports = {
   getInsumoCosts,
+  getInsumoDre,
   updateInsumoCosts,
 };
