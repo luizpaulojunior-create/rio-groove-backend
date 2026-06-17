@@ -1,4 +1,11 @@
 const supabase = require('../lib/supabase');
+const {
+  emptyGeneralCostsMap,
+  normalizeGeneralMonthlyCosts,
+  normalizeGeneralCostEntries,
+  migrateLegacyDreExpenses,
+  GENERAL_COST_GROUPS,
+} = require('../config/generalCosts');
 
 const CONFIG_ID = 'default';
 
@@ -43,7 +50,8 @@ const DEFAULT_CONFIG = {
     Caneca: 0,
     Acessório: 0,
   },
-  dre_monthly_expenses: {},
+  general_monthly_costs: {},
+  general_cost_entries: {},
 };
 
 let cachedConfig = null;
@@ -66,25 +74,13 @@ function mergeNumericMap(defaults, overrides) {
   return result;
 }
 
-function normalizeExpensesMap(raw) {
-  if (!raw || typeof raw !== 'object') return {};
-  const result = {};
-  for (const [monthKey, values] of Object.entries(raw)) {
-    if (!values || typeof values !== 'object') continue;
-    result[monthKey] = {
-      payroll: parseMoney(values.payroll, 0),
-      marketing: parseMoney(values.marketing, 0),
-      rent: parseMoney(values.rent, 0),
-      utilities: parseMoney(values.utilities, 0),
-      other: parseMoney(values.other, 0),
-    };
-  }
-  return result;
-}
-
 function normalizeConfig(raw) {
   const source = raw && typeof raw === 'object' ? raw : {};
   const selling = source.dtf_selling && typeof source.dtf_selling === 'object' ? source.dtf_selling : {};
+  const generalMonthly = migrateLegacyDreExpenses(
+    normalizeGeneralMonthlyCosts(source.general_monthly_costs),
+    source.dre_monthly_expenses,
+  );
 
   return {
     blank_unit_cost: mergeNumericMap(DEFAULT_CONFIG.blank_unit_cost, source.blank_unit_cost),
@@ -107,7 +103,8 @@ function normalizeConfig(raw) {
       DEFAULT_CONFIG.catalog_selling_price,
       source.catalog_selling_price,
     ),
-    dre_monthly_expenses: normalizeExpensesMap(source.dre_monthly_expenses),
+    general_monthly_costs: generalMonthly,
+    general_cost_entries: normalizeGeneralCostEntries(source.general_cost_entries),
   };
 }
 
@@ -208,6 +205,8 @@ module.exports = {
   CONFIG_ID,
   DTF_INSUMOS,
   DEFAULT_CONFIG,
+  GENERAL_COST_GROUPS,
+  emptyGeneralCostsMap,
   getConfig,
   getConfigMeta,
   getBlankUnitCosts,

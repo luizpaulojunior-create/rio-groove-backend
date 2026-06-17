@@ -8,6 +8,7 @@ const getInsumoCosts = asyncHandler(async (_req, res) => {
     config,
     updated_at,
     dtf_insumos: insumoCostsService.DTF_INSUMOS,
+    general_cost_groups: insumoCostsService.GENERAL_COST_GROUPS,
     defaults: insumoCostsService.DEFAULT_CONFIG,
     unit_economics: buildUnitEconomics(config),
   });

@@ -4,9 +4,13 @@ const {
   DTF_INSUMOS,
   getConfig,
 } = require('./insumoCosts.service');
+const {
+  buildGeneralCostsBreakdown,
+  GENERAL_COST_GROUPS,
+  GENERAL_COST_LABELS,
+} = require('../config/generalCosts');
 
 const CATALOG_CATEGORIES = ['Camisa', 'Regata', 'Boné', 'Caneca', 'Acessório'];
-const DRE_EXPENSE_KEYS = ['payroll', 'marketing', 'rent', 'utilities', 'other'];
 
 const PAID_STATUSES = new Set(['paid', 'pagamento_aprovado', 'fulfilled']);
 const CANCELLED_STATUSES = new Set(['cancelled', 'cancelado', 'refunded', 'payment_failed']);
@@ -308,20 +312,6 @@ function aggregateCustomOrders(orders, config, start, end) {
   };
 }
 
-function emptyExpenses() {
-  return Object.fromEntries(DRE_EXPENSE_KEYS.map((key) => [key, 0]));
-}
-
-function normalizeExpenses(raw) {
-  const base = emptyExpenses();
-  if (!raw || typeof raw !== 'object') return base;
-  for (const key of DRE_EXPENSE_KEYS) {
-    base[key] = round2(raw[key]);
-  }
-  return base;
-}
-
-async function getMonthlyDre(monthStr) {
   const { year, month, key } = parseMonthParam(monthStr);
   const { start, end } = monthRange(year, month);
   const config = getConfig();
@@ -354,8 +344,8 @@ async function getMonthlyDre(monthStr) {
   const cogs = round2(catalog.cogs + custom.cogs);
   const grossProfit = round2(grossRevenue - cogs);
 
-  const expenses = normalizeExpenses(config.dre_monthly_expenses?.[key]);
-  const totalExpenses = round2(DRE_EXPENSE_KEYS.reduce((sum, k) => sum + expenses[k], 0));
+  const generalCosts = buildGeneralCostsBreakdown(config, key);
+  const totalExpenses = generalCosts.total;
   const netProfit = round2(grossProfit - totalExpenses);
 
   return {
@@ -366,7 +356,8 @@ async function getMonthlyDre(monthStr) {
     cogs,
     grossProfit,
     grossMarginPct: marginPct(grossProfit, grossRevenue),
-    expenses,
+    generalCosts: generalCosts.costs,
+    generalCostGroups: generalCosts.groups,
     totalExpenses,
     netProfit,
     netMarginPct: marginPct(netProfit, grossRevenue),
@@ -379,14 +370,16 @@ async function getMonthlyDre(monthStr) {
     notes: [
       'Receita = pedidos pagos do catálogo + personalizados pagos no mês (peça e taxa de arte).',
       'CMV = custo blank + DTF por peça (ou unit_cost do SKU no estoque, quando existir).',
-      'Frete entra na receita; CMV não inclui custo real de envio — ajuste em Despesas se necessário.',
+      'Despesas = custos gerais lançados na aba Custos gerais para o mesmo mês.',
+      'Frete entra na receita; custo real de envio pode ser lançado em Frete / Logística operacional.',
     ],
   };
 }
 
 module.exports = {
   CATALOG_CATEGORIES,
-  DRE_EXPENSE_KEYS,
+  GENERAL_COST_GROUPS,
+  GENERAL_COST_LABELS,
   buildUnitEconomics,
   getMonthlyDre,
 };
