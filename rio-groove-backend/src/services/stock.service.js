@@ -503,7 +503,7 @@ const applyFocusOperationalStock = async (quantity = 10) => {
     quantity_per_sku: targetQty,
     units_removed_from_other: previousOtherQty,
     catalog: {
-      masculino_oversized: ['Oversized Boxy', 'Oversized Tradicional'],
+      masculino_oversized: ['Oversized Tradicional'],
       feminino_cropped_oversized: ['Oversized Feminina'],
       regata: ['Machão'],
       bone: ['Trucker'],

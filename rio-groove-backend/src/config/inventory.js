@@ -337,8 +337,8 @@ function buildOperationalStockItems(defaults = SEED_DEFAULTS, unitCostByCategory
 const OPERATIONAL_APPAREL_COLOR_KEYS = ['blk', 'off'];
 const OPERATIONAL_BONE_COLOR_KEYS = ['blk', 'wht'];
 
-/** Masculino — linha Oversized (Boxy + Tradicional no catálogo). */
-const OPERATIONAL_MASCULINO_OVERSIZED_MODELS = ['Oversized Boxy', 'Oversized Tradicional'];
+/** Masculino — linha Oversized (somente Tradicional). */
+const OPERATIONAL_MASCULINO_OVERSIZED_MODELS = ['Oversized Tradicional'];
 
 /** Feminino — Cropped Oversized (modelo físico único no estoque). */
 const OPERATIONAL_FEMININO_CROPPED_OVERSIZED_MODELS = ['Oversized Feminina'];
