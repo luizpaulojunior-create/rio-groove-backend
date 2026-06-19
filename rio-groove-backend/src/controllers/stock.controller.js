@@ -81,6 +81,15 @@ const zeroWhiteStockItems = asyncHandler(async (req, res) => {
   }
 });
 
+const applyFocusOperationalStock = asyncHandler(async (req, res) => {
+  try {
+    const result = await stockService.applyFocusOperationalStock();
+    return res.json(result);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Erro ao aplicar foco operacional de estoque' });
+  }
+});
+
 module.exports = {
   getStock,
   getStockItem,
@@ -90,5 +99,6 @@ module.exports = {
   adjustStock,
   seedStockItems,
   syncYellowStockItems,
-  zeroWhiteStockItems
+  zeroWhiteStockItems,
+  applyFocusOperationalStock
 };

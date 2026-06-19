@@ -1,13 +1,15 @@
 const supabase = require('../lib/supabase');
 const {
   buildOperationalStockItems,
+  buildFocusOperationalStockItems,
   stockDedupKey,
   SEED_DEFAULTS,
   normalizeCategory,
   GENDER_NEUTRAL,
   FABRIC_NEUTRAL,
   categoryUsesFabric,
-  classifyLegacyInvalidStockItem
+  classifyLegacyInvalidStockItem,
+  isFocusOperationalStockItem
 } = require('../config/inventory');
 const { getBlankUnitCosts } = require('./insumoCosts.service');
 
@@ -387,6 +389,124 @@ const zeroWhiteStockItems = async () => {
   };
 };
 
+/**
+ * Mantém ativo apenas oversized + regata + cropped em preto/off white.
+ * Demais SKUs: quantity = 0 e is_active = false (preserva linhas no admin).
+ */
+const applyFocusOperationalStock = async () => {
+  const focusDefaults = {
+    ...SEED_DEFAULTS,
+    quantity: 0,
+    is_active: true
+  };
+
+  const itemsToEnsure = buildFocusOperationalStockItems(focusDefaults, getBlankUnitCosts());
+
+  const { data: existing, error: fetchErr } = await supabase
+    .from('stock_items')
+    .select('id, category, gender, model, fabric, color_key, size, quantity, sku');
+
+  if (fetchErr) {
+    if (fetchErr.code === 'PGRST205') {
+      throw new Error('Tabela stock_items não existe. Execute o script SQL no Supabase.');
+    }
+    throw fetchErr;
+  }
+
+  const existingSet = new Set(
+    (existing || []).map((row) =>
+      stockDedupKey({
+        category: normalizeCategory(row.category),
+        gender: row.gender,
+        model: row.model,
+        fabric: row.fabric,
+        color_key: row.color_key,
+        size: row.size
+      })
+    )
+  );
+
+  const newItems = itemsToEnsure
+    .filter((item) => !existingSet.has(stockDedupKey(item)))
+    .map((item) => {
+      const cat = normalizeCategory(item.category);
+      return {
+        ...item,
+        gender: item.gender || GENDER_NEUTRAL,
+        fabric: item.fabric || (categoryUsesFabric(cat) ? 'Lisa' : FABRIC_NEUTRAL)
+      };
+    });
+
+  const BATCH_SIZE = 200;
+  for (let i = 0; i < newItems.length; i += BATCH_SIZE) {
+    const batch = newItems.slice(i, i + BATCH_SIZE);
+    const { error: insertErr } = await supabase.from('stock_items').insert(batch);
+    if (insertErr) throw insertErr;
+  }
+
+  const rows = existing || [];
+  const focusIds = [];
+  const otherIds = [];
+
+  for (const row of rows) {
+    if (isFocusOperationalStockItem(row)) {
+      focusIds.push(row.id);
+    } else {
+      otherIds.push(row.id);
+    }
+  }
+
+  let deactivated = 0;
+  for (let i = 0; i < otherIds.length; i += BATCH_SIZE) {
+    const batch = otherIds.slice(i, i + BATCH_SIZE);
+    const { data: updated, error: updateErr } = await supabase
+      .from('stock_items')
+      .update({ quantity: 0, is_active: false })
+      .in('id', batch)
+      .select('id');
+    if (updateErr) throw updateErr;
+    deactivated += (updated || []).length;
+  }
+
+  let activated = 0;
+  for (let i = 0; i < focusIds.length; i += BATCH_SIZE) {
+    const batch = focusIds.slice(i, i + BATCH_SIZE);
+    const { data: updated, error: updateErr } = await supabase
+      .from('stock_items')
+      .update({ is_active: true })
+      .in('id', batch)
+      .select('id');
+    if (updateErr) throw updateErr;
+    activated += (updated || []).length;
+  }
+
+  const previousOtherQty = rows
+    .filter((row) => !isFocusOperationalStockItem(row))
+    .reduce((sum, row) => sum + Number(row.quantity ?? 0), 0);
+
+  const message =
+    `${deactivated} SKUs zerados/desativados ` +
+    `(${previousOtherQty} un. removidas do estoque ativo). ` +
+    `${activated} SKUs foco mantidos ativos (preto/off white · oversized/regata/cropped). ` +
+    `${newItems.length} SKUs foco criados se faltavam.`;
+
+  return {
+    total_existing: rows.length,
+    focus_active: activated,
+    other_zeroed: deactivated,
+    focus_created: newItems.length,
+    units_removed_from_other: previousOtherQty,
+    focus_colors: ['blk', 'off'],
+    focus_models: {
+      oversized: ['Oversized Boxy', 'Oversized Tradicional', 'Oversized Feminina'],
+      cropped: ['Boxy Cropped', 'Cropped Tradicional', 'Regata Cropped Boxy'],
+      regata: ['Regular', 'Machão']
+    },
+    sample_focus_skus: itemsToEnsure.slice(0, 8).map((item) => item.sku),
+    message
+  };
+};
+
 module.exports = {
   getStock,
   getStockItem,
@@ -398,5 +518,6 @@ module.exports = {
   incrementStock,
   seedStockItems,
   syncYellowStockItems,
-  zeroWhiteStockItems
+  zeroWhiteStockItems,
+  applyFocusOperationalStock
 };

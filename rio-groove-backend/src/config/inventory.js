@@ -333,6 +333,45 @@ function buildOperationalStockItems(defaults = SEED_DEFAULTS, unitCostByCategory
   return items;
 }
 
+/** Estoque operacional focado — preto + off white, oversized / regata / cropped. */
+const FOCUS_STOCK_COLOR_KEYS = ['blk', 'off'];
+
+const FOCUS_OVERSIZED_MODELS = [
+  'Oversized Boxy',
+  'Oversized Tradicional',
+  'Oversized Feminina'
+];
+
+const FOCUS_CROPPED_MODELS = [
+  'Boxy Cropped',
+  'Cropped Tradicional',
+  'Regata Cropped Boxy'
+];
+
+const FOCUS_REGATA_MODELS = [...MODELS_REGATA];
+
+function isFocusOperationalStockItem(row) {
+  const colorKey = String(row.color_key || '').trim().toLowerCase();
+  if (!FOCUS_STOCK_COLOR_KEYS.includes(colorKey)) return false;
+
+  const category = normalizeCategory(row.category);
+  const model = String(row.model || '').trim();
+
+  if (category === 'Regata') {
+    return FOCUS_REGATA_MODELS.includes(model);
+  }
+
+  if (category === 'Camisa') {
+    return FOCUS_OVERSIZED_MODELS.includes(model) || FOCUS_CROPPED_MODELS.includes(model);
+  }
+
+  return false;
+}
+
+function buildFocusOperationalStockItems(defaults = SEED_DEFAULTS, unitCostByCategory = UNIT_COST_BY_CATEGORY) {
+  return buildOperationalStockItems(defaults, unitCostByCategory).filter(isFocusOperationalStockItem);
+}
+
 module.exports = {
   CATEGORIES,
   GENDERS,
@@ -366,5 +405,11 @@ module.exports = {
   stockDedupKey,
   classifyLegacyInvalidStockItem,
   isLegacyInvalidStockItem,
-  buildOperationalStockItems
+  buildOperationalStockItems,
+  FOCUS_STOCK_COLOR_KEYS,
+  FOCUS_OVERSIZED_MODELS,
+  FOCUS_CROPPED_MODELS,
+  FOCUS_REGATA_MODELS,
+  isFocusOperationalStockItem,
+  buildFocusOperationalStockItems
 };
