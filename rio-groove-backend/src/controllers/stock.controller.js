@@ -83,10 +83,11 @@ const zeroWhiteStockItems = asyncHandler(async (req, res) => {
 
 const applyFocusOperationalStock = asyncHandler(async (req, res) => {
   try {
-    const result = await stockService.applyFocusOperationalStock();
+    const quantity = req.body?.quantity ?? 10;
+    const result = await stockService.applyFocusOperationalStock(quantity);
     return res.json(result);
   } catch (error) {
-    return res.status(400).json({ error: error.message || 'Erro ao aplicar foco operacional de estoque' });
+    return res.status(400).json({ error: error.message || 'Erro ao aplicar catálogo operacional de estoque' });
   }
 });
 

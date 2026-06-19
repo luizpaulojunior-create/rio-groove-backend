@@ -39,7 +39,7 @@ const MODELS_BY_GENDER = {
 const MODELS_REGATA = ['Regular', 'Machão'];
 const MODELS_BONE = ['Trucker', 'Dad Hat', 'Snapback'];
 const MODEL_CANECA = '330ml';
-const MATERIAL_CANECA = 'Porcelana';
+const MATERIAL_CANECA = 'Polímero';
 const VALID_CANECA_SKU = 'MUG-330-WHT-U';
 
 const FABRICS = ['Lisa', 'Estonada'];
@@ -333,43 +333,158 @@ function buildOperationalStockItems(defaults = SEED_DEFAULTS, unitCostByCategory
   return items;
 }
 
-/** Estoque operacional focado — preto + off white, oversized / regata / cropped. */
-const FOCUS_STOCK_COLOR_KEYS = ['blk', 'off'];
+/** Estoque operacional real — únicos insumos físicos da operação. */
+const OPERATIONAL_APPAREL_COLOR_KEYS = ['blk', 'off'];
+const OPERATIONAL_BONE_COLOR_KEYS = ['blk', 'wht'];
 
-const FOCUS_OVERSIZED_MODELS = [
-  'Oversized Boxy',
-  'Oversized Tradicional',
-  'Oversized Feminina'
+/** Masculino — linha Oversized (Boxy + Tradicional no catálogo). */
+const OPERATIONAL_MASCULINO_OVERSIZED_MODELS = ['Oversized Boxy', 'Oversized Tradicional'];
+
+/** Feminino — Cropped Oversized (categoria cropped). */
+const OPERATIONAL_FEMININO_CROPPED_OVERSIZED_MODELS = ['Boxy Cropped', 'Cropped Tradicional'];
+
+/** Regata — somente Machão. */
+const OPERATIONAL_REGATA_MODELS = ['Machão'];
+
+/** Acessórios */
+const OPERATIONAL_BONE_MODELS = ['Trucker'];
+
+const OPERATIONAL_CATALOG_RULES = [
+  {
+    category: 'Camisa',
+    gender: 'Masculino',
+    models: OPERATIONAL_MASCULINO_OVERSIZED_MODELS,
+    colorKeys: OPERATIONAL_APPAREL_COLOR_KEYS,
+    fabrics: FABRICS,
+    sizes: APPAREL_SIZES
+  },
+  {
+    category: 'Regata',
+    gender: GENDER_NEUTRAL,
+    models: OPERATIONAL_REGATA_MODELS,
+    colorKeys: OPERATIONAL_APPAREL_COLOR_KEYS,
+    fabrics: FABRICS,
+    sizes: APPAREL_SIZES
+  },
+  {
+    category: 'Camisa',
+    gender: 'Feminino',
+    models: OPERATIONAL_FEMININO_CROPPED_OVERSIZED_MODELS,
+    colorKeys: OPERATIONAL_APPAREL_COLOR_KEYS,
+    fabrics: FABRICS,
+    sizes: APPAREL_SIZES
+  },
+  {
+    category: 'Boné',
+    gender: GENDER_NEUTRAL,
+    models: OPERATIONAL_BONE_MODELS,
+    colorKeys: OPERATIONAL_BONE_COLOR_KEYS,
+    fabrics: [FABRIC_NEUTRAL],
+    sizes: [ONE_SIZE]
+  },
+  {
+    category: 'Caneca',
+    gender: GENDER_NEUTRAL,
+    models: [MODEL_CANECA],
+    colorKeys: ['wht'],
+    fabrics: [FABRIC_NEUTRAL],
+    sizes: [ONE_SIZE]
+  }
 ];
 
-const FOCUS_CROPPED_MODELS = [
-  'Boxy Cropped',
-  'Cropped Tradicional',
-  'Regata Cropped Boxy'
-];
+function colorMetaForKey(colorKey) {
+  const color = COLORS.find((c) => c.key === colorKey);
+  if (color) return color;
+  if (colorKey === 'blk') {
+    return { label: 'Black', key: 'blk', hex: '#000000' };
+  }
+  if (colorKey === 'off') {
+    return { label: 'Off White', key: 'off', hex: '#F5F1E8' };
+  }
+  if (colorKey === 'wht') {
+    return { label: 'White', key: 'wht', hex: '#FFFFFF' };
+  }
+  return { label: colorKey, key: colorKey, hex: '#CCCCCC' };
+}
 
-const FOCUS_REGATA_MODELS = [...MODELS_REGATA];
+function buildOperationalCatalogStockItems(
+  defaults = SEED_DEFAULTS,
+  unitCostByCategory = UNIT_COST_BY_CATEGORY
+) {
+  const items = [];
 
-function isFocusOperationalStockItem(row) {
-  const colorKey = String(row.color_key || '').trim().toLowerCase();
-  if (!FOCUS_STOCK_COLOR_KEYS.includes(colorKey)) return false;
+  for (const rule of OPERATIONAL_CATALOG_RULES) {
+    const category = normalizeCategory(rule.category);
 
-  const category = normalizeCategory(row.category);
-  const model = String(row.model || '').trim();
+    for (const model of rule.models) {
+      for (const fabric of rule.fabrics) {
+        for (const colorKey of rule.colorKeys) {
+          const color = colorMetaForKey(colorKey);
 
-  if (category === 'Regata') {
-    return FOCUS_REGATA_MODELS.includes(model);
+          for (const size of rule.sizes) {
+            const gender =
+              category === 'Camisa'
+                ? rule.gender
+                : rule.gender || GENDER_NEUTRAL;
+
+            items.push({
+              category,
+              gender,
+              model,
+              fabric: categoryUsesFabric(category) ? fabric : FABRIC_NEUTRAL,
+              color_key: color.key,
+              color_label: color.label,
+              color_hex: color.hex,
+              size,
+              quantity: defaults.quantity,
+              min_stock: defaults.min_stock,
+              is_active: defaults.is_active,
+              unit_cost: unitCostByCategory[category] ?? unitCostByCategory.Camisa,
+              sku: generateSKU(category, model, color.key, size, fabric, gender)
+            });
+          }
+        }
+      }
+    }
   }
 
-  if (category === 'Camisa') {
-    return FOCUS_OVERSIZED_MODELS.includes(model) || FOCUS_CROPPED_MODELS.includes(model);
+  return items;
+}
+
+function isOperationalCatalogStockItem(row) {
+  const colorKey = String(row.color_key || '').trim().toLowerCase();
+  const category = normalizeCategory(row.category);
+  const model = String(row.model || '').trim();
+  const gender = String(row.gender || '').trim();
+  const fabric = String(row.fabric || '').trim();
+  const size = String(row.size || '').trim();
+
+  for (const rule of OPERATIONAL_CATALOG_RULES) {
+    if (normalizeCategory(rule.category) !== category) continue;
+    if (!rule.models.includes(model)) continue;
+    if (!rule.colorKeys.includes(colorKey)) continue;
+    if (!rule.sizes.includes(size)) continue;
+
+    if (category === 'Camisa' && gender !== rule.gender) continue;
+
+    if (categoryUsesFabric(category)) {
+      if (!rule.fabrics.includes(fabric)) continue;
+    }
+
+    return true;
   }
 
   return false;
 }
 
+/** @deprecated use isOperationalCatalogStockItem */
+function isFocusOperationalStockItem(row) {
+  return isOperationalCatalogStockItem(row);
+}
+
+/** @deprecated use buildOperationalCatalogStockItems */
 function buildFocusOperationalStockItems(defaults = SEED_DEFAULTS, unitCostByCategory = UNIT_COST_BY_CATEGORY) {
-  return buildOperationalStockItems(defaults, unitCostByCategory).filter(isFocusOperationalStockItem);
+  return buildOperationalCatalogStockItems(defaults, unitCostByCategory);
 }
 
 module.exports = {
@@ -406,10 +521,17 @@ module.exports = {
   classifyLegacyInvalidStockItem,
   isLegacyInvalidStockItem,
   buildOperationalStockItems,
-  FOCUS_STOCK_COLOR_KEYS,
-  FOCUS_OVERSIZED_MODELS,
-  FOCUS_CROPPED_MODELS,
-  FOCUS_REGATA_MODELS,
+  OPERATIONAL_CATALOG_RULES,
+  OPERATIONAL_MASCULINO_OVERSIZED_MODELS,
+  OPERATIONAL_FEMININO_CROPPED_OVERSIZED_MODELS,
+  OPERATIONAL_REGATA_MODELS,
+  OPERATIONAL_BONE_MODELS,
+  buildOperationalCatalogStockItems,
+  isOperationalCatalogStockItem,
+  FOCUS_STOCK_COLOR_KEYS: OPERATIONAL_APPAREL_COLOR_KEYS,
+  FOCUS_OVERSIZED_MODELS: OPERATIONAL_MASCULINO_OVERSIZED_MODELS,
+  FOCUS_CROPPED_MODELS: OPERATIONAL_FEMININO_CROPPED_OVERSIZED_MODELS,
+  FOCUS_REGATA_MODELS: OPERATIONAL_REGATA_MODELS,
   isFocusOperationalStockItem,
   buildFocusOperationalStockItems
 };

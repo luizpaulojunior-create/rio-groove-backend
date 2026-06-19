@@ -1,7 +1,7 @@
 const supabase = require('../lib/supabase');
 const {
   buildOperationalStockItems,
-  buildFocusOperationalStockItems,
+  buildOperationalCatalogStockItems,
   stockDedupKey,
   SEED_DEFAULTS,
   normalizeCategory,
@@ -9,7 +9,7 @@ const {
   FABRIC_NEUTRAL,
   categoryUsesFabric,
   classifyLegacyInvalidStockItem,
-  isFocusOperationalStockItem
+  isOperationalCatalogStockItem
 } = require('../config/inventory');
 const { getBlankUnitCosts } = require('./insumoCosts.service');
 
@@ -390,17 +390,22 @@ const zeroWhiteStockItems = async () => {
 };
 
 /**
- * Mantém ativo apenas oversized + regata + cropped em preto/off white.
- * Demais SKUs: quantity = 0 e is_active = false (preserva linhas no admin).
+ * Catálogo operacional: apenas insumos físicos atuais, 10 un. por SKU (ajustável).
+ * Demais linhas: quantity = 0 e is_active = false.
  */
-const applyFocusOperationalStock = async () => {
-  const focusDefaults = {
+const applyFocusOperationalStock = async (quantity = 10) => {
+  const targetQty = Number(quantity);
+  if (!Number.isInteger(targetQty) || targetQty < 0) {
+    throw new Error('Quantidade inválida para sincronização do catálogo operacional.');
+  }
+
+  const catalogDefaults = {
     ...SEED_DEFAULTS,
-    quantity: 0,
+    quantity: targetQty,
     is_active: true
   };
 
-  const itemsToEnsure = buildFocusOperationalStockItems(focusDefaults, getBlankUnitCosts());
+  const itemsToEnsure = buildOperationalCatalogStockItems(catalogDefaults, getBlankUnitCosts());
 
   const { data: existing, error: fetchErr } = await supabase
     .from('stock_items')
@@ -445,12 +450,12 @@ const applyFocusOperationalStock = async () => {
   }
 
   const rows = existing || [];
-  const focusIds = [];
+  const catalogIds = [];
   const otherIds = [];
 
   for (const row of rows) {
-    if (isFocusOperationalStockItem(row)) {
-      focusIds.push(row.id);
+    if (isOperationalCatalogStockItem(row)) {
+      catalogIds.push(row.id);
     } else {
       otherIds.push(row.id);
     }
@@ -469,11 +474,11 @@ const applyFocusOperationalStock = async () => {
   }
 
   let activated = 0;
-  for (let i = 0; i < focusIds.length; i += BATCH_SIZE) {
-    const batch = focusIds.slice(i, i + BATCH_SIZE);
+  for (let i = 0; i < catalogIds.length; i += BATCH_SIZE) {
+    const batch = catalogIds.slice(i, i + BATCH_SIZE);
     const { data: updated, error: updateErr } = await supabase
       .from('stock_items')
-      .update({ is_active: true })
+      .update({ is_active: true, quantity: targetQty })
       .in('id', batch)
       .select('id');
     if (updateErr) throw updateErr;
@@ -481,28 +486,32 @@ const applyFocusOperationalStock = async () => {
   }
 
   const previousOtherQty = rows
-    .filter((row) => !isFocusOperationalStockItem(row))
+    .filter((row) => !isOperationalCatalogStockItem(row))
     .reduce((sum, row) => sum + Number(row.quantity ?? 0), 0);
 
   const message =
-    `${deactivated} SKUs zerados/desativados ` +
-    `(${previousOtherQty} un. removidas do estoque ativo). ` +
-    `${activated} SKUs foco mantidos ativos (preto/off white · oversized/regata/cropped). ` +
-    `${newItems.length} SKUs foco criados se faltavam.`;
+    `${deactivated} SKUs removidos do estoque ativo ` +
+    `(${previousOtherQty} un. zeradas). ` +
+    `${activated} SKUs do catálogo operacional com ${targetQty} un. cada. ` +
+    `${newItems.length} SKUs novos criados.`;
 
   return {
     total_existing: rows.length,
-    focus_active: activated,
+    catalog_active: activated,
     other_zeroed: deactivated,
-    focus_created: newItems.length,
+    catalog_created: newItems.length,
+    quantity_per_sku: targetQty,
     units_removed_from_other: previousOtherQty,
-    focus_colors: ['blk', 'off'],
-    focus_models: {
-      oversized: ['Oversized Boxy', 'Oversized Tradicional', 'Oversized Feminina'],
-      cropped: ['Boxy Cropped', 'Cropped Tradicional', 'Regata Cropped Boxy'],
-      regata: ['Regular', 'Machão']
+    catalog: {
+      masculino_oversized: ['Oversized Boxy', 'Oversized Tradicional'],
+      feminino_cropped_oversized: ['Boxy Cropped', 'Cropped Tradicional'],
+      regata: ['Machão'],
+      bone: ['Trucker'],
+      caneca: ['330ml Polímero'],
+      apparel_colors: ['blk', 'off'],
+      bone_colors: ['blk', 'wht']
     },
-    sample_focus_skus: itemsToEnsure.slice(0, 8).map((item) => item.sku),
+    sample_skus: itemsToEnsure.slice(0, 8).map((item) => item.sku),
     message
   };
 };
