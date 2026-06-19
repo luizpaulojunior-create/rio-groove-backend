@@ -390,8 +390,8 @@ const zeroWhiteStockItems = async () => {
 };
 
 /**
- * Catálogo operacional: apenas insumos físicos atuais, 10 un. por SKU (ajustável).
- * Demais linhas: quantity = 0 e is_active = false.
+ * Catálogo operacional: mantém só insumos físicos atuais (10 un./SKU).
+ * Linhas fora do catálogo são excluídas da tabela — não ficam inativas.
  */
 const applyFocusOperationalStock = async (quantity = 10) => {
   const targetQty = Number(quantity);
@@ -461,16 +461,16 @@ const applyFocusOperationalStock = async (quantity = 10) => {
     }
   }
 
-  let deactivated = 0;
+  let deleted = 0;
   for (let i = 0; i < otherIds.length; i += BATCH_SIZE) {
     const batch = otherIds.slice(i, i + BATCH_SIZE);
-    const { data: updated, error: updateErr } = await supabase
+    const { data: removed, error: deleteErr } = await supabase
       .from('stock_items')
-      .update({ quantity: 0, is_active: false })
+      .delete()
       .in('id', batch)
       .select('id');
-    if (updateErr) throw updateErr;
-    deactivated += (updated || []).length;
+    if (deleteErr) throw deleteErr;
+    deleted += (removed || []).length;
   }
 
   let activated = 0;
@@ -485,23 +485,17 @@ const applyFocusOperationalStock = async (quantity = 10) => {
     activated += (updated || []).length;
   }
 
-  const previousOtherQty = rows
-    .filter((row) => !isOperationalCatalogStockItem(row))
-    .reduce((sum, row) => sum + Number(row.quantity ?? 0), 0);
-
   const message =
-    `${deactivated} SKUs removidos do estoque ativo ` +
-    `(${previousOtherQty} un. zeradas). ` +
-    `${activated} SKUs do catálogo operacional com ${targetQty} un. cada. ` +
+    `${deleted} SKUs excluídos do estoque (fora do catálogo operacional). ` +
+    `${activated} SKUs do catálogo com ${targetQty} un. cada. ` +
     `${newItems.length} SKUs novos criados.`;
 
   return {
     total_existing: rows.length,
     catalog_active: activated,
-    other_zeroed: deactivated,
+    catalog_deleted: deleted,
     catalog_created: newItems.length,
     quantity_per_sku: targetQty,
-    units_removed_from_other: previousOtherQty,
     catalog: {
       masculino_oversized: ['Oversized Tradicional'],
       feminino_cropped_oversized: ['Oversized Feminina'],
