@@ -28,6 +28,7 @@ const MODELS_BY_GENDER = {
   ],
   Feminino: [
     'Baby Tee Altíssima',
+    'Cropped Oversized',
     'Oversized Feminina',
     'Boxy Cropped',
     'Relaxed Fit',
@@ -61,6 +62,7 @@ const MODEL_PREFIXES = {
   'Regular Fit': 'REG',
   'Oversized Tradicional': 'OVT',
   'Baby Tee Altíssima': 'BTA',
+  'Cropped Oversized': 'COS',
   'Oversized Feminina': 'OVF',
   'Boxy Cropped': 'BOX',
   'Cropped Tradicional': 'CRO',
@@ -340,8 +342,8 @@ const OPERATIONAL_BONE_COLOR_KEYS = ['blk', 'wht'];
 /** Masculino — linha Oversized (somente Tradicional). */
 const OPERATIONAL_MASCULINO_OVERSIZED_MODELS = ['Oversized Tradicional'];
 
-/** Feminino — Cropped Oversized (modelo físico único no estoque). */
-const OPERATIONAL_FEMININO_CROPPED_OVERSIZED_MODELS = ['Oversized Feminina'];
+/** Feminino — Cropped Oversized (nome do insumo físico). */
+const OPERATIONAL_FEMININO_CROPPED_OVERSIZED_MODELS = ['Cropped Oversized'];
 
 /** Regata — somente Machão. */
 const OPERATIONAL_REGATA_MODELS = ['Machão'];
