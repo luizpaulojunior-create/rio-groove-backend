@@ -1,6 +1,8 @@
 {
-  "dependencies": {
-    "@supabase/supabase-js": "^2.105.4",
-    "react-router-dom": "^7.15.1"
+  "name": "rio-groove-backend-final",
+  "private": true,
+  "scripts": {
+    "start": "npm --prefix rio-groove-backend start",
+    "build": "npm --prefix rio-groove-backend install"
   }
 }

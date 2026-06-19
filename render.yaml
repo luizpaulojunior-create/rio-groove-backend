@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: rio-groove-backend
+    runtime: node
+    plan: starter
+    autoDeploy: true
+    rootDir: rio-groove-backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: FRONTEND_URL
+        value: https://store.riogroovemovimentos.com.br
+      - key: STORE_URL
+        value: https://store.riogroovemovimentos.com.br
+      - key: ADMIN_URL
+        value: https://admin.riogroovemovimentos.com.br
+      - key: BACKEND_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: MERCADO_PAGO_PUBLIC_KEY
+        sync: false
+      - key: MERCADO_PAGO_ACCESS_TOKEN
+        sync: false
+      - key: MERCADO_PAGO_WEBHOOK_SECRET
+        sync: false
+      - key: STATEMENT_DESCRIPTOR
+        value: RIO GROOVE
+      - key: DEFAULT_CURRENCY
+        value: BRL
