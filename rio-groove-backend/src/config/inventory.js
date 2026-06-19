@@ -340,8 +340,8 @@ const OPERATIONAL_BONE_COLOR_KEYS = ['blk', 'wht'];
 /** Masculino — linha Oversized (Boxy + Tradicional no catálogo). */
 const OPERATIONAL_MASCULINO_OVERSIZED_MODELS = ['Oversized Boxy', 'Oversized Tradicional'];
 
-/** Feminino — Cropped Oversized (categoria cropped). */
-const OPERATIONAL_FEMININO_CROPPED_OVERSIZED_MODELS = ['Boxy Cropped', 'Cropped Tradicional'];
+/** Feminino — Cropped Oversized (modelo físico único no estoque). */
+const OPERATIONAL_FEMININO_CROPPED_OVERSIZED_MODELS = ['Oversized Feminina'];
 
 /** Regata — somente Machão. */
 const OPERATIONAL_REGATA_MODELS = ['Machão'];
