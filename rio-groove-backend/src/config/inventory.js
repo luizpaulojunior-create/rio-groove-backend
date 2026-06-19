@@ -45,7 +45,15 @@ const VALID_CANECA_SKU = 'MUG-330-WHT-U';
 
 const FABRICS = ['Lisa', 'Estonada'];
 
+/** Malhas do catálogo operacional (insumos físicos). Ajuste se passar a estocar estonada. */
+const OPERATIONAL_FABRICS = ['Lisa'];
+
 const APPAREL_SIZES = ['P', 'M', 'G', 'GG'];
+/** Oversized Tradicional masculino — G1 é o maior (após GG). */
+const OPERATIONAL_MASCULINO_OVERSIZED_SIZES = ['P', 'M', 'G', 'GG', 'G1'];
+
+/** Acréscimo de preço no tamanho G1 (camisas Oversized masculinas, BRL). */
+const MASCULINO_OVERSIZED_G1_SURCHARGE_BRL = 15;
 const ONE_SIZE = 'Tamanho Único';
 
 const COLORS = [
@@ -357,15 +365,15 @@ const OPERATIONAL_CATALOG_RULES = [
     gender: 'Masculino',
     models: OPERATIONAL_MASCULINO_OVERSIZED_MODELS,
     colorKeys: OPERATIONAL_APPAREL_COLOR_KEYS,
-    fabrics: FABRICS,
-    sizes: APPAREL_SIZES
+    fabrics: OPERATIONAL_FABRICS,
+    sizes: OPERATIONAL_MASCULINO_OVERSIZED_SIZES
   },
   {
     category: 'Regata',
     gender: GENDER_NEUTRAL,
     models: OPERATIONAL_REGATA_MODELS,
     colorKeys: OPERATIONAL_APPAREL_COLOR_KEYS,
-    fabrics: FABRICS,
+    fabrics: OPERATIONAL_FABRICS,
     sizes: APPAREL_SIZES
   },
   {
@@ -373,7 +381,7 @@ const OPERATIONAL_CATALOG_RULES = [
     gender: 'Feminino',
     models: OPERATIONAL_FEMININO_CROPPED_OVERSIZED_MODELS,
     colorKeys: OPERATIONAL_APPAREL_COLOR_KEYS,
-    fabrics: FABRICS,
+    fabrics: OPERATIONAL_FABRICS,
     sizes: APPAREL_SIZES
   },
   {
@@ -501,6 +509,7 @@ module.exports = {
   MATERIAL_CANECA,
   VALID_CANECA_SKU,
   FABRICS,
+  OPERATIONAL_MASCULINO_OVERSIZED_SIZES,
   APPAREL_SIZES,
   ONE_SIZE,
   COLORS,
@@ -528,6 +537,7 @@ module.exports = {
   OPERATIONAL_FEMININO_CROPPED_OVERSIZED_MODELS,
   OPERATIONAL_REGATA_MODELS,
   OPERATIONAL_BONE_MODELS,
+  OPERATIONAL_FABRICS,
   buildOperationalCatalogStockItems,
   isOperationalCatalogStockItem,
   FOCUS_STOCK_COLOR_KEYS: OPERATIONAL_APPAREL_COLOR_KEYS,

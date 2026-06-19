@@ -3,6 +3,7 @@ const { roundMoney } = require('../utils/money');
 const { onlyDigits } = require('../utils/order');
 const { getShippingQuote } = require('./shipping.service');
 const { validateAndApplyCoupon, normalizeCouponCode } = require('./coupons.service');
+const { getG1SizeSurcharge } = require('../utils/apparelPricing');
 
 const FREE_SHIPPING_THRESHOLD = 799.9;
 const PICKUP_ID = 'pickup-rio';
@@ -123,7 +124,7 @@ async function fetchProductsBySlugs(slugs) {
 
   const { data, error } = await supabase
     .from('products')
-    .select('id, slug, name, price, active, product_variants(sku, price_override, status)')
+    .select('id, slug, name, price, active, tags, product_variants(sku, price_override, status)')
     .in('slug', unique)
     .eq('active', true);
 
@@ -140,16 +141,19 @@ function resolveItemUnitPrice(product, item) {
   const basePrice = Number(product.price) || 0;
   if (basePrice <= 0) return 0;
 
+  let price = basePrice;
+
   const sku = String(item.sku || item.raw?.sku || '').trim();
   if (sku && Array.isArray(product.product_variants)) {
     const variant = product.product_variants.find(
       (v) => v.sku === sku && (v.status || 'active') === 'active'
     );
     const override = Number(variant?.price_override);
-    if (variant && override > 0) return override;
+    if (variant && override > 0) price = override;
   }
 
-  return basePrice;
+  const size = item.size || item.raw?.size;
+  return price + getG1SizeSurcharge(product, size);
 }
 
 function distributeDiscountAcrossItems(items, discountAmount) {
