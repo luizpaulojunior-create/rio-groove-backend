@@ -44,11 +44,18 @@ function monthStart(date = new Date()) {
 }
 
 async function loadOrdersAndStock() {
+  const now = Date.now();
+  if (loadOrdersAndStock.cache && now - loadOrdersAndStock.cache.at < 45000) {
+    return loadOrdersAndStock.cache.data;
+  }
+
   const [{ orders }, stockItems] = await Promise.all([
-    getOrders({ limit: 500, offset: 0 }),
+    getOrders({ limit: 200, offset: 0 }),
     getStock().catch(() => []),
   ]);
-  return { orders: orders || [], stockItems: stockItems || [] };
+  const data = { orders: orders || [], stockItems: stockItems || [] };
+  loadOrdersAndStock.cache = { at: now, data };
+  return data;
 }
 
 function buildCustomerMetrics(orders) {

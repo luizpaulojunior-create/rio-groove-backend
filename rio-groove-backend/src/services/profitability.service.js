@@ -312,6 +312,7 @@ function aggregateCustomOrders(orders, config, start, end) {
   };
 }
 
+async function getMonthlyDre(monthStr) {
   const { year, month, key } = parseMonthParam(monthStr);
   const { start, end } = monthRange(year, month);
   const config = getConfig();
