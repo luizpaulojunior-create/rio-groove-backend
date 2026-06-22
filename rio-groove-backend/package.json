@@ -7,12 +7,14 @@
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
     "lint": "node --check src/app.js && node --check src/server.js",
-    "test": "node --test --require ./test/setup-env.js test/*.test.js"
+    "test": "node --test --require ./test/setup-env.js test/*.test.js",
+    "ga4:report": "node scripts/ga4-funnel-report.mjs"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
+    "@google-analytics/data": "^4.12.1",
     "@sentry/node": "^9.47.1",
     "@supabase/supabase-js": "^2.105.4",
     "body-parser": "^2.2.2",

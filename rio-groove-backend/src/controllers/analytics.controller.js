@@ -4,6 +4,7 @@ const {
   getSalesChartData,
   getTopProducts,
 } = require('../services/analytics.service');
+const { getConversionReport } = require('../services/ga4.service');
 
 const getDashboard = asyncHandler(async (req, res) => {
   const stats = await getDashboardAnalytics();
@@ -22,8 +23,15 @@ const getTopProductsAnalytics = asyncHandler(async (req, res) => {
   return res.json(products);
 });
 
+const getGa4Conversion = asyncHandler(async (req, res) => {
+  const period = String(req.query.period || '7d');
+  const report = await getConversionReport(period);
+  return res.json(report);
+});
+
 module.exports = {
   getDashboard,
   getSales,
   getTopProductsAnalytics,
+  getGa4Conversion,
 };

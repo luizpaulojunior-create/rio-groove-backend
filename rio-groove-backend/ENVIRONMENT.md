@@ -76,6 +76,32 @@
 | `STORE_NAME`, `STORE_PHONE`, `STORE_EMAIL` | Dados da loja |
 | `STORE_DOCUMENT`, `STORE_ADDRESS`, etc. | Endereço fiscal |
 
+## Google Analytics 4 (opcional — funil no admin)
+
+| Variável | Descrição |
+|----------|-----------|
+| `GA4_PROPERTY_ID` | ID numérico da propriedade (ex: `539502234`) |
+| `GA4_MEASUREMENT_ID` | ID de medição da loja (ex: `G-2J23RT1MN3`) |
+| `GA4_SERVICE_ACCOUNT_JSON` | JSON da conta de serviço (texto ou base64) |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Alternativa: caminho local ao arquivo JSON |
+
+**Setup Google Cloud**
+
+1. Criar projeto no [Google Cloud Console](https://console.cloud.google.com/)
+2. Ativar **Google Analytics Data API**
+3. Criar **conta de serviço** → baixar JSON
+4. No GA4: **Admin → Gerenciamento de acesso à propriedade** → adicionar e-mail da conta de serviço com papel **Viewer**
+5. No Render: `GA4_PROPERTY_ID=539502234` e colar o JSON em `GA4_SERVICE_ACCOUNT_JSON` (recomendado em base64 no painel)
+
+Relatório local:
+
+```powershell
+cd c:\Users\luizp\Downloads\rio-groove-backend-final\rio-groove-backend
+node scripts/ga4-funnel-report.mjs 7d
+```
+
+Endpoint admin (autenticado): `GET /api/analytics/ga4/conversion?period=7d|30d|90d`
+
 ---
 
 ## Comandos PowerShell — desenvolvimento local
