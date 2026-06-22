@@ -78,7 +78,7 @@ function buildPickupEmailTemplate(payload) {
                 <p style="font-size:16px;color:#ffffff;">Olá ${payload.name},</p>
                 <p style="font-size:16px;color:#cccccc;line-height:1.7;">Sua retirada presencial da Rio Groove Store já pode ser organizada.</p>
                 <p style="font-size:16px;color:#ffffff;line-height:1.7;">Pedido: <strong>${payload.orderNumber}</strong></p>
-                <p style="font-size:16px;color:#ffffff;line-height:1.7;">Entre em contato com nosso WhatsApp oficial para combinar local, data e horário da retirada:</p>
+                <p style="font-size:16px;color:#ffffff;line-height:1.7;">Entre em contato com nosso WhatsApp oficial para combinar retirada na Taquara ou entrega por aplicativo (Uber, 99 e similares):</p>
                 <p style="font-size:20px;font-weight:700;color:#ff3c30;letter-spacing:0.08em;">21 96445-6789</p>
                 <p style="font-size:16px;color:#cccccc;line-height:1.7;">Obrigado por fortalecer a cultura e os movimentos da Rio Groove. 🥁</p>
               </td>
@@ -160,7 +160,7 @@ function buildPickupWhatsAppMessage() {
 
 Sua retirada presencial da Rio Groove Store já pode ser organizada.
 
-Entre em contato com nosso WhatsApp oficial para combinar local, data e horário da retirada:
+Entre em contato com nosso WhatsApp oficial para combinar retirada na Taquara ou entrega por aplicativo (Uber, 99 e similares):
 
 21 96445-6789
 
