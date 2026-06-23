@@ -5,7 +5,7 @@ const {
   buildMercadoPagoBackUrls,
   getMercadoPagoNotificationUrl,
 } = require('../utils/checkout-urls');
-const { getProductPaymentTotal } = require('../config/customPricing');
+const { getProductPaymentTotal, getPackagePaymentTotal } = require('../config/customPricing');
 const { onlyDigits } = require('../utils/order');
 
 function parseCustomPaymentRef(externalReference) {
@@ -14,14 +14,19 @@ function parseCustomPaymentRef(externalReference) {
   if (artMatch) return { orderId: artMatch[1], phase: 'art' };
   const productMatch = ref.match(/^custom-product-([0-9a-f-]{36})$/i);
   if (productMatch) return { orderId: productMatch[1], phase: 'product' };
+  const packageMatch = ref.match(/^custom-package-([0-9a-f-]{36})$/i);
+  if (packageMatch) return { orderId: packageMatch[1], phase: 'package' };
   return null;
 }
 
 async function createCustomOrderPaymentPreference({ order, phase, returnOrigin }) {
   const isArt = phase === 'art';
+  const isPackage = phase === 'package';
   const amount = isArt
     ? Number(order.art_fee_amount)
-    : getProductPaymentTotal(order);
+    : isPackage
+      ? getPackagePaymentTotal(order)
+      : getProductPaymentTotal(order);
 
   if (!Number.isFinite(amount) || amount <= 0) {
     const err = new Error('Valor de pagamento inválido para este pedido.');
@@ -29,10 +34,16 @@ async function createCustomOrderPaymentPreference({ order, phase, returnOrigin }
     throw err;
   }
 
-  const externalReference = isArt ? `custom-art-${order.id}` : `custom-product-${order.id}`;
+  const externalReference = isArt
+    ? `custom-art-${order.id}`
+    : isPackage
+      ? `custom-package-${order.id}`
+      : `custom-product-${order.id}`;
   const title = isArt
     ? `Arte exclusiva · ${order.protocol}`
-    : `Peça personalizada · ${order.protocol}`;
+    : isPackage
+      ? `Pacote personalizado · ${order.protocol}`
+      : `Peça personalizada · ${order.protocol}`;
 
   const returnBase = resolveReturnOrigin(returnOrigin);
   const backUrls = buildMercadoPagoBackUrls(returnBase, externalReference);

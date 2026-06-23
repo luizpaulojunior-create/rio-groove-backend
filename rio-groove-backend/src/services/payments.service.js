@@ -645,6 +645,16 @@ async function reconcileCustomOrderPaymentReturn({ orderId, paymentId, user = nu
     };
   }
 
+  if (match.phase === 'package' && order.art_payment_status === 'paid' && order.product_payment_status === 'paid') {
+    return {
+      reconciled: true,
+      alreadyPaid: true,
+      paymentStatus,
+      phase: 'package',
+      order: user ? await getCustomOrderForCustomer(id, user) : order,
+    };
+  }
+
   const result = await applyCustomOrderPaymentUpdate(payment);
   if (result.ignored) {
     return {

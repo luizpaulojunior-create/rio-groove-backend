@@ -3,7 +3,7 @@ const supabase = require('../lib/supabase');
 const { uploadCustomOrderFile, uploadImage } = require('./upload.service');
 const { STORAGE_BUCKET, STORAGE_PATHS } = require('../config/storage');
 const { validateCustomOrderPayload, VALID_STATUSES } = require('../config/customProducts');
-const { computeOrderPricing, getProductPaymentTotal } = require('../config/customPricing');
+const { computeOrderPricing, getProductPaymentTotal, getPackagePaymentTotal } = require('../config/customPricing');
 const { getCustomOrderPackage } = require('../config/customShipping');
 const { getShippingQuote, appendPickupToQuoteOptions, resolveShippingSelection } = require('./shipping.service');
 const { onlyDigits } = require('../utils/order');
@@ -31,7 +31,15 @@ function parseJsonField(value, fallback) {
 
 function canViewMockup(order) {
   if (order.order_type === 'ready_art') return true;
-  return order.art_payment_status === 'paid' || order.art_payment_status === 'not_required';
+  if (order.art_payment_status === 'paid' || order.art_payment_status === 'not_required') return true;
+  return [
+    'mockup_ready',
+    'art_paid',
+    'awaiting_product_payment',
+    'in_production',
+    'shipped',
+    'completed',
+  ].includes(order.status);
 }
 
 function sanitizeOrderForCustomer(order, { includeFiles = true } = {}) {
@@ -468,15 +476,20 @@ async function approveCustomOrderForProduction(id, user) {
   const order = await getCustomOrderById(id);
   assertCustomerOwnsOrder(order, user);
 
-  if (order.order_type === 'exclusive_art' && order.art_payment_status !== 'paid') {
-    const err = new Error('Pague a taxa de arte antes de aprovar a peça.');
+  if (order.order_type === 'exclusive_art') {
+    if (!['mockup_ready', 'art_paid'].includes(order.status)) {
+      const err = new Error('Mockup ainda não disponível para aprovação.');
+      err.statusCode = 400;
+      throw err;
+    }
+  } else if (order.status !== 'awaiting_product_payment') {
+    const err = new Error('Mockup ainda não disponível para aprovação.');
     err.statusCode = 400;
     throw err;
   }
 
-  if (!['art_paid', 'awaiting_product_payment', 'mockup_ready'].includes(order.status)
-    && order.order_type === 'exclusive_art') {
-    const err = new Error('Mockup ainda não disponível para aprovação.');
+  if (order.product_payment_status === 'paid') {
+    const err = new Error('Este pedido já foi pago.');
     err.statusCode = 400;
     throw err;
   }
@@ -508,7 +521,7 @@ async function startArtFeePayment(id, user, returnOrigin) {
     err.statusCode = 400;
     throw err;
   }
-  if (order.status !== 'mockup_ready') {
+  if (order.status !== 'mockup_ready' && order.status !== 'awaiting_product_payment') {
     const err = new Error('Mockup ainda não está pronto para pagamento.');
     err.statusCode = 400;
     throw err;
@@ -547,6 +560,12 @@ async function startProductPayment(id, user, returnOrigin, paymentPayload = {}) 
   }
   if (order.status !== 'awaiting_product_payment') {
     const err = new Error('Aprove o mockup antes de pagar a peça.');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (order.order_type === 'exclusive_art' && order.art_payment_status !== 'paid') {
+    const err = new Error('Pague a taxa de arte antes ou use o pagamento do pacote completo.');
     err.statusCode = 400;
     throw err;
   }
@@ -590,6 +609,70 @@ async function startProductPayment(id, user, returnOrigin, paymentPayload = {}) 
   return payment;
 }
 
+async function startPackagePayment(id, user, returnOrigin, paymentPayload = {}) {
+  const order = await getCustomOrderById(id);
+  assertCustomerOwnsOrder(order, user);
+
+  if (order.order_type !== 'exclusive_art') {
+    const err = new Error('Pagamento em pacote disponível apenas para arte exclusiva.');
+    err.statusCode = 400;
+    throw err;
+  }
+  if (order.art_payment_status === 'paid' && order.product_payment_status === 'paid') {
+    const err = new Error('Este pedido já foi pago.');
+    err.statusCode = 400;
+    throw err;
+  }
+  if (order.art_payment_status === 'paid') {
+    const err = new Error('A taxa de arte já foi paga. Pague apenas a peça e o frete.');
+    err.statusCode = 400;
+    throw err;
+  }
+  if (order.status !== 'awaiting_product_payment') {
+    const err = new Error('Aprove o mockup antes de pagar o pacote completo.');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const pkg = getCustomOrderPackage(order);
+  const resolvedShipping = await resolveShippingSelection({
+    cep: onlyDigits(paymentPayload.cep || order.shipping_cep || ''),
+    package: pkg,
+    shipping: paymentPayload.shipping,
+    pickup_acknowledged: paymentPayload.pickup_acknowledged === true,
+  });
+
+  const { error: shippingUpdateError } = await supabase
+    .from('custom_orders')
+    .update({
+      shipping_amount: resolvedShipping.price,
+      shipping_method: resolvedShipping.label,
+      shipping_service_id: resolvedShipping.id,
+      shipping_cep: onlyDigits(paymentPayload.cep || order.shipping_cep || '') || order.shipping_cep,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id);
+
+  if (shippingUpdateError) throw new Error(shippingUpdateError.message);
+
+  const freshOrder = await getCustomOrderById(id);
+  const payment = await createCustomOrderPaymentPreference({
+    order: freshOrder,
+    phase: 'package',
+    returnOrigin,
+  });
+
+  await supabase
+    .from('custom_orders')
+    .update({
+      payment_link: payment.checkoutUrl,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id);
+
+  return payment;
+}
+
 async function applyCustomOrderPaymentUpdate(payment) {
   const ref = String(
     payment.external_reference
@@ -619,6 +702,9 @@ async function applyCustomOrderPaymentUpdate(payment) {
   if (match.phase === 'product' && order.product_payment_status === 'paid') {
     return { ignored: false, alreadyPaid: true, order, phase: 'product' };
   }
+  if (match.phase === 'package' && order.art_payment_status === 'paid' && order.product_payment_status === 'paid') {
+    return { ignored: false, alreadyPaid: true, order, phase: 'package' };
+  }
 
   const now = new Date().toISOString();
   const updates = { updated_at: now, payment_status: 'approved' };
@@ -627,6 +713,12 @@ async function applyCustomOrderPaymentUpdate(payment) {
     updates.art_payment_status = 'paid';
     updates.art_fee_paid_at = now;
     updates.status = 'art_paid';
+  } else if (match.phase === 'package') {
+    updates.art_payment_status = 'paid';
+    updates.art_fee_paid_at = now;
+    updates.product_payment_status = 'paid';
+    updates.product_paid_at = now;
+    updates.status = 'in_production';
   } else {
     updates.product_payment_status = 'paid';
     updates.product_paid_at = now;
@@ -659,6 +751,7 @@ module.exports = {
   approveCustomOrderForProduction,
   startArtFeePayment,
   startProductPayment,
+  startPackagePayment,
   applyCustomOrderPaymentUpdate,
   sanitizeOrderForCustomer,
   canViewMockup,

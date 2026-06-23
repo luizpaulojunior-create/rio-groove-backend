@@ -72,6 +72,14 @@ function getProductPaymentTotal(order) {
   return Math.round((unit * qty + shipping) * 100) / 100;
 }
 
+function getPackagePaymentTotal(order) {
+  const art = Number(order.art_fee_amount) || 0;
+  const qty = Math.max(1, Number(order.quantity) || 1);
+  const unit = Number(order.product_unit_amount) || 0;
+  const shipping = Number(order.shipping_amount) || 0;
+  return Math.round((art + unit * qty + shipping) * 100) / 100;
+}
+
 module.exports = {
   APPAREL_INSUMOS,
   resolvePricingInsumo,
@@ -82,4 +90,5 @@ module.exports = {
   getReadyArtDiscount,
   computeOrderPricing,
   getProductPaymentTotal,
+  getPackagePaymentTotal,
 };

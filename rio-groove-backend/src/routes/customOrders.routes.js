@@ -18,6 +18,7 @@ const {
   approveCustomOrder,
   payArtFee,
   payProduct,
+  payPackage,
   quoteCustomOrderShipping,
   reconcileMyCustomOrderPayment,
   reconcileCustomOrderPaymentAdmin,
@@ -45,6 +46,7 @@ router.get('/api/custom-orders/mine/:id', requireCustomerAuth, getMyCustomOrder)
 router.post('/api/custom-orders/mine/:id/pay-art', requireCustomerAuth, payArtFee);
 router.post('/api/custom-orders/mine/:id/approve', requireCustomerAuth, approveCustomOrder);
 router.post('/api/custom-orders/mine/:id/pay-product', requireCustomerAuth, payProduct);
+router.post('/api/custom-orders/mine/:id/pay-package', requireCustomerAuth, payPackage);
 router.post('/api/custom-orders/mine/:id/shipping-quote', requireCustomerAuth, quoteMyCustomOrderShipping);
 router.post('/api/custom-orders/mine/:id/reconcile-payment', requireCustomerAuth, reconcileMyCustomOrderPayment);
 

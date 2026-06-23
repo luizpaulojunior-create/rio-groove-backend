@@ -179,6 +179,27 @@ async function payProduct(req, res, next) {
   }
 }
 
+async function payPackage(req, res, next) {
+  try {
+    const payment = await customOrdersService.startPackagePayment(
+      req.params.id,
+      req.user,
+      req.body?.return_origin || req.headers.origin,
+      {
+        shipping: req.body?.shipping,
+        pickup_acknowledged: req.body?.pickup_acknowledged,
+        cep: req.body?.cep,
+      },
+    );
+    res.json(payment);
+  } catch (err) {
+    if (err.statusCode) {
+      return res.status(err.statusCode).json({ ok: false, error: err.message });
+    }
+    next(err);
+  }
+}
+
 async function quoteMyCustomOrderShipping(req, res, next) {
   try {
     const result = await customOrdersService.quoteCustomOrderShippingForCustomer(
@@ -271,6 +292,7 @@ module.exports = {
   approveCustomOrder,
   payArtFee,
   payProduct,
+  payPackage,
   quoteCustomOrderShipping,
   quoteMyCustomOrderShipping,
   reconcileMyCustomOrderPayment,
