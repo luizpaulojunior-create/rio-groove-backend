@@ -8,7 +8,7 @@ const {
   appendOrderLog,
   isOrderPaid,
 } = require('../utils/orderFulfillment');
-const { restoreStockForOrder } = require('../services/stockCheckout.service');
+const { restoreStockForOrder, deductStockForOrder } = require('../services/stockCheckout.service');
 const {
   verifyOrderPublicStatusAccess,
   buildPublicOrderStatusResponse,
@@ -242,6 +242,21 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
 
   const order = await updateOrderById(existingOrder.id, updates);
   const orderWithItems = await getOrderWithItems(order.id);
+
+  if (
+    ['pagamento_aprovado', 'aguardando_producao'].includes(status) &&
+    existingOrder.fulfillment_status === 'cancelado' &&
+    isOrderPaid(existingOrder)
+  ) {
+    try {
+      if (!orderWithItems.stock_deducted_at) {
+        await deductStockForOrder(orderWithItems, orderWithItems.items || []);
+        await updateOrderById(order.id, { stock_deducted_at: new Date().toISOString() });
+      }
+    } catch (error) {
+      console.error('[Orders] Falha ao rebaixar estoque na reativação:', error.message);
+    }
+  }
 
   if (status === 'cancelado') {
     try {

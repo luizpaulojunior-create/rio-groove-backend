@@ -38,9 +38,26 @@ function isOrderPaid(order) {
   );
 }
 
+function isPaidButWronglyCancelled(order) {
+  if (!isOrderPaid(order) || order?.fulfillment_status !== 'cancelado') {
+    return false;
+  }
+
+  const mpStatus = String(order.mercado_pago_status || '').toLowerCase();
+  if (['refunded', 'charged_back'].includes(mpStatus)) {
+    return false;
+  }
+
+  return true;
+}
+
 function resolveFulfillmentStatus(order) {
   const paid = isOrderPaid(order);
   const fulfillment = order?.fulfillment_status;
+
+  if (isPaidButWronglyCancelled(order)) {
+    return 'pagamento_aprovado';
+  }
 
   if (fulfillment && FULFILLMENT_STATUSES.has(fulfillment)) {
     if (paid && fulfillment === 'aguardando_pagamento') {
@@ -63,8 +80,9 @@ function resolveFulfillmentStatus(order) {
 
 function needsFulfillmentRepair(order) {
   if (!order || !isOrderPaid(order)) return false;
-  const fulfillment = resolveFulfillmentStatus(order);
-  return fulfillment === 'pagamento_aprovado' && order.fulfillment_status === 'aguardando_pagamento';
+  if (order.fulfillment_status === 'aguardando_pagamento') return true;
+  if (isPaidButWronglyCancelled(order)) return true;
+  return false;
 }
 
 function sanitizeOrderForResponse(order) {
@@ -145,6 +163,7 @@ function appendOrderLog(existingLogs, entry) {
 module.exports = {
   FULFILLMENT_STATUSES,
   isOrderPaid,
+  isPaidButWronglyCancelled,
   resolveFulfillmentStatus,
   needsFulfillmentRepair,
   sanitizeOrderForResponse,

@@ -182,27 +182,47 @@ async function applyMercadoPagoPaymentUpdate(payment, merchantOrder = null, opti
   const statusMap = mapMercadoPagoPaymentStatus(payment.status);
   const isCancelled = ['cancelled', 'rejected', 'refunded', 'charged_back'].includes(String(payment.status || '').toLowerCase());
   const wasNotCancelled = !['cancelled', 'rejected', 'refunded', 'charged_back'].includes(existingOrder.mercado_pago_status);
+  const { isOrderPaid } = require('../utils/orderFulfillment');
+  const alreadyPaid = isOrderPaid(existingOrder);
+  const sameApprovedPayment =
+    payment.id &&
+    existingOrder.mercado_pago_payment_id &&
+    String(payment.id) === String(existingOrder.mercado_pago_payment_id);
+  const hardRefund = ['refunded', 'charged_back'].includes(String(payment.status || '').toLowerCase());
 
   const orderUpdates = {
-    status: statusMap.orderStatus,
-    payment_status: statusMap.paymentStatus,
     mercado_pago_payment_id: payment.id ? String(payment.id) : existingOrder.mercado_pago_payment_id,
     mercado_pago_merchant_order_id: payment.order?.id ? String(payment.order.id) : existingOrder.mercado_pago_merchant_order_id,
     mercado_pago_status: payment.status || null,
     mercado_pago_status_detail: payment.status_detail || null,
-    paid_at: paymentApproved ? new Date().toISOString() : existingOrder.paid_at,
     payment_payload: payment,
   };
 
   if (paymentApproved) {
+    orderUpdates.status = statusMap.orderStatus;
+    orderUpdates.payment_status = statusMap.paymentStatus;
+    orderUpdates.paid_at = new Date().toISOString();
     orderUpdates.fulfillment_status = 'pagamento_aprovado';
-  } else if (isCancelled) {
+  } else if (isCancelled && (!alreadyPaid || (sameApprovedPayment && hardRefund))) {
+    orderUpdates.status = statusMap.orderStatus;
+    orderUpdates.payment_status = statusMap.paymentStatus;
     orderUpdates.fulfillment_status = 'cancelado';
+  } else if (isCancelled && alreadyPaid) {
+    console.warn('[PaymentsService] Ignorando cancelamento tardio em pedido já pago', {
+      orderId: existingOrder.id,
+      orderNumber: existingOrder.order_number,
+      paymentId: payment.id,
+      paymentStatus: payment.status,
+    });
+  } else {
+    orderUpdates.status = statusMap.orderStatus;
+    orderUpdates.payment_status = statusMap.paymentStatus;
+    orderUpdates.paid_at = existingOrder.paid_at;
   }
 
   const updatedOrder = await updateOrderByExternalReference(existingOrder.external_reference, orderUpdates);
 
-  if (isCancelled && wasNotCancelled) {
+  if (isCancelled && wasNotCancelled && (!alreadyPaid || (sameApprovedPayment && hardRefund))) {
     try {
       const orderWithItems = await getOrderWithItems(existingOrder.external_reference);
       await restoreStockForOrder(orderWithItems, orderWithItems.items || []);

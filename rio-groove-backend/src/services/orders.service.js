@@ -13,13 +13,29 @@ async function repairOrderFulfillmentIfNeeded(order) {
   try {
     const updates = buildOrderUpdatesFromFulfillment('pagamento_aprovado', order);
     const repaired = await updateOrderById(order.id, updates);
+    let result = repaired;
+
+    if (!repaired.stock_deducted_at) {
+      try {
+        const { deductStockForOrder } = require('./stockCheckout.service');
+        const items = order.order_items || (await getOrderItems(order.id));
+        const orderWithItems = { ...repaired, items, order_items: items };
+        await deductStockForOrder(orderWithItems, items || []);
+        result = await updateOrderById(order.id, {
+          stock_deducted_at: new Date().toISOString(),
+        });
+      } catch (stockError) {
+        console.error('[OrdersService] Falha ao rebaixar estoque após reparo:', stockError.message);
+      }
+    }
+
     console.log('[OrdersService] fulfillment_status reparado automaticamente', {
       orderId: order.id,
       orderNumber: order.order_number,
       from: order.fulfillment_status,
-      to: repaired.fulfillment_status,
+      to: result.fulfillment_status,
     });
-    return sanitizeOrderForResponse(repaired);
+    return sanitizeOrderForResponse(result);
   } catch (error) {
     console.error('[OrdersService] Falha ao reparar fulfillment_status:', error.message);
     return sanitizeOrderForResponse(order);
