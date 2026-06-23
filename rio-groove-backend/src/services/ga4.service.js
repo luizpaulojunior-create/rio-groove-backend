@@ -20,21 +20,72 @@ let clientCache = null;
 let reportCache = new Map();
 
 function parseServiceAccountCredentials() {
-  const raw = process.env.GA4_SERVICE_ACCOUNT_JSON;
-  if (raw) {
-    const trimmed = raw.trim();
-    if (trimmed.startsWith('{')) {
-      return JSON.parse(trimmed);
+  try {
+    const raw = process.env.GA4_SERVICE_ACCOUNT_JSON;
+    if (raw) {
+      const trimmed = raw.trim();
+      if (!trimmed) return null;
+      if (trimmed.startsWith('{')) {
+        return JSON.parse(trimmed);
+      }
+      return JSON.parse(Buffer.from(trimmed, 'base64').toString('utf8'));
     }
-    return JSON.parse(Buffer.from(trimmed, 'base64').toString('utf8'));
-  }
 
+    const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    if (credentialsPath && fs.existsSync(credentialsPath)) {
+      return JSON.parse(fs.readFileSync(credentialsPath, 'utf8'));
+    }
+
+    return null;
+  } catch (error) {
+    console.warn('[GA4] Falha ao ler credenciais:', error.message);
+    return null;
+  }
+}
+
+function hasGa4CredentialsEnv() {
+  const raw = String(process.env.GA4_SERVICE_ACCOUNT_JSON || '').trim();
+  if (raw) return true;
   const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-  if (credentialsPath && fs.existsSync(credentialsPath)) {
-    return JSON.parse(fs.readFileSync(credentialsPath, 'utf8'));
-  }
+  return Boolean(credentialsPath && fs.existsSync(credentialsPath));
+}
 
-  return null;
+function defaultPropertyMeta() {
+  return {
+    propertyId: process.env.GA4_PROPERTY_ID || '539502234',
+    measurementId: process.env.GA4_MEASUREMENT_ID || 'G-2J23RT1MN3',
+  };
+}
+
+function emptyConversionPayload(dateRange) {
+  const emptyFunnel = FUNNEL_STEPS.map((step) => ({
+    step: step.event,
+    label: step.label,
+    events: 0,
+    users: 0,
+    rateFromPrevious: null,
+    rateFromTop: 0,
+  }));
+
+  return {
+    ...dateRange,
+    ...defaultPropertyMeta(),
+    overview: {
+      sessions: 0,
+      activeUsers: 0,
+      pageViews: 0,
+      purchases: 0,
+      purchaseRevenue: 0,
+    },
+    funnel: emptyFunnel,
+    devices: [],
+    topProducts: [],
+    insights: {
+      overallConversion: 0,
+      cartAbandonment: 0,
+      checkoutDropoff: 0,
+    },
+  };
 }
 
 function isGa4Configured() {
@@ -229,57 +280,74 @@ async function fetchTopProducts(client, property, dateRange, limit = 10) {
 }
 
 async function getConversionReport(period = '7d') {
+  const dateRange = periodToDateRange(period);
+  const meta = defaultPropertyMeta();
+
   if (!isGa4Configured()) {
+    const invalidEnv = hasGa4CredentialsEnv();
     return {
       configured: false,
-      message:
-        'Configure GA4_PROPERTY_ID e GA4_SERVICE_ACCOUNT_JSON no backend (conta de serviço com papel Viewer na propriedade GA4).',
-      propertyId: process.env.GA4_PROPERTY_ID || '539502234',
-      measurementId: process.env.GA4_MEASUREMENT_ID || 'G-2J23RT1MN3',
+      message: invalidEnv
+        ? 'GA4_SERVICE_ACCOUNT_JSON está definido no Render, mas o JSON/base64 é inválido. Cole o arquivo inteiro da conta de serviço ou use base64 válido.'
+        : 'Configure GA4_PROPERTY_ID e GA4_SERVICE_ACCOUNT_JSON no backend (conta de serviço com papel Viewer na propriedade GA4).',
+      ...meta,
+      ...dateRange,
     };
   }
 
-  const dateRange = periodToDateRange(period);
-  const cacheKey = `conversion:${dateRange.period}:${dateRange.startDate}:${dateRange.endDate}`;
+  try {
+    return await runCachedReport(cacheKeyForRange(dateRange), 5 * 60 * 1000, async () => {
+      const client = getClient();
+      const property = getPropertyResource();
 
-  return runCachedReport(cacheKey, 5 * 60 * 1000, async () => {
-    const client = getClient();
-    const property = getPropertyResource();
+      const [overview, funnel, devices, topProducts] = await Promise.all([
+        fetchOverview(client, property, dateRange),
+        fetchFunnel(client, property, dateRange),
+        fetchDevices(client, property, dateRange),
+        fetchTopProducts(client, property, dateRange, 12),
+      ]);
 
-    const [overview, funnel, devices, topProducts] = await Promise.all([
-      fetchOverview(client, property, dateRange),
-      fetchFunnel(client, property, dateRange),
-      fetchDevices(client, property, dateRange),
-      fetchTopProducts(client, property, dateRange, 12),
-    ]);
+      const cartStep = funnel.find((step) => step.step === 'add_to_cart');
+      const checkoutStep = funnel.find((step) => step.step === 'begin_checkout');
+      const purchaseStep = funnel.find((step) => step.step === 'purchase');
+      const viewStep = funnel.find((step) => step.step === 'view_item');
 
-    const cartStep = funnel.find((step) => step.step === 'add_to_cart');
-    const checkoutStep = funnel.find((step) => step.step === 'begin_checkout');
-    const purchaseStep = funnel.find((step) => step.step === 'purchase');
-    const viewStep = funnel.find((step) => step.step === 'view_item');
-
+      return {
+        configured: true,
+        ...meta,
+        ...dateRange,
+        overview,
+        funnel,
+        devices,
+        topProducts,
+        insights: {
+          overallConversion: viewStep?.users
+            ? Number(((purchaseStep?.users || 0) / viewStep.users) * 100).toFixed(2)
+            : 0,
+          cartAbandonment: cartStep?.users
+            ? Number((((cartStep.users - (purchaseStep?.users || 0)) / cartStep.users) * 100).toFixed(1))
+            : 0,
+          checkoutDropoff: checkoutStep?.users
+            ? Number((((checkoutStep.users - (purchaseStep?.users || 0)) / checkoutStep.users) * 100).toFixed(1))
+            : 0,
+        },
+      };
+    });
+  } catch (error) {
+    console.error('[GA4] Erro ao consultar Data API:', error.message);
+    const hint = /permission|denied|403|401/i.test(String(error.message))
+      ? ' Adicione o e-mail da conta de serviço como Viewer em GA4 → Admin → Gerenciamento de acesso à propriedade.'
+      : '';
     return {
       configured: true,
-      propertyId: process.env.GA4_PROPERTY_ID || '539502234',
-      measurementId: process.env.GA4_MEASUREMENT_ID || 'G-2J23RT1MN3',
-      ...dateRange,
-      overview,
-      funnel,
-      devices,
-      topProducts,
-      insights: {
-        overallConversion: viewStep?.users
-          ? Number(((purchaseStep?.users || 0) / viewStep.users) * 100).toFixed(2)
-          : 0,
-        cartAbandonment: cartStep?.users
-          ? Number((((cartStep.users - (purchaseStep?.users || 0)) / cartStep.users) * 100).toFixed(1))
-          : 0,
-        checkoutDropoff: checkoutStep?.users
-          ? Number((((checkoutStep.users - (purchaseStep?.users || 0)) / checkoutStep.users) * 100).toFixed(1))
-          : 0,
-      },
+      fetchError: `${error.message || 'Erro ao consultar Google Analytics Data API'}.${hint}`,
+      ...emptyConversionPayload(dateRange),
     };
-  });
+  }
+}
+
+function cacheKeyForRange(dateRange) {
+  return `conversion:${dateRange.period}:${dateRange.startDate}:${dateRange.endDate}`;
 }
 
 module.exports = {

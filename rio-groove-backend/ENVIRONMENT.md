@@ -36,6 +36,36 @@
 | `SUPABASE_SERVICE_ROLE_KEY` | Sim | Backend only — **nunca expor no frontend** |
 | `SUPABASE_ANON_KEY` | Não | Carregada em `env.js`, uso limitado |
 
+**Aliases aceitos** (mesmo valor da secret key): `SUPABASE_SECRET_KEY`, `SB_SECRET_KEY`.
+
+### Chaves novas vs legacy (2026)
+
+O upgrade para **Pro** não troca as chaves — é o mesmo projeto.
+
+No painel Supabase as chaves JWT (`eyJ…`) podem **continuar iguais** às de sempre. Em alguns projetos o Supabase já bloqueia esse formato na API REST (`Legacy API keys are disabled`), enquanto **produção no Render** segue com a variável configurada lá (que pode ser diferente do `.env` na sua máquina).
+
+| Onde | O que importa |
+|------|----------------|
+| **Render / Cloudflare** | Chaves que estão no painel de deploy — se `/api/health` retorna 200, está OK |
+| **`.env` local** | Só para `npm run dev` e scripts; pode estar desatualizado em relação ao Render |
+
+Para sincronizar dev local com produção: copie `SUPABASE_SERVICE_ROLE_KEY` do **Render → Environment** para o `.env` local (não precisa mudar nada em produção se já funciona).
+
+Formato novo (`sb_publishable_` / `sb_secret_`), se aparecer no dashboard, também funciona — use o que o Supabase mostrar em **Settings → API**.
+
+### Auditoria periódica
+
+```powershell
+cd c:\Users\luizp\Downloads\rio-groove-backend-final\rio-groove-backend
+npm run audit:prod
+# Só .env local:
+node scripts/audit-production.mjs --local-only
+# JSON (CI/monitoramento):
+node scripts/audit-production.mjs --json
+```
+
+Verifica: `/api/health`, catálogo, imagem Supabase, pedido de referência, loja, admin, bundle de pedidos e (se `.env` existir) formato das chaves + query no Postgres.
+
 ## Pagamentos
 
 | Variável | Descrição |

@@ -5,7 +5,7 @@ const { STORAGE_BUCKET, STORAGE_PATHS } = require('../config/storage');
 const { validateCustomOrderPayload, VALID_STATUSES } = require('../config/customProducts');
 const { computeOrderPricing, getProductPaymentTotal } = require('../config/customPricing');
 const { getCustomOrderPackage } = require('../config/customShipping');
-const { getShippingQuote } = require('./shipping.service');
+const { getShippingQuote, appendPickupToQuoteOptions, resolveShippingSelection } = require('./shipping.service');
 const { onlyDigits } = require('../utils/order');
 const { createCustomOrderPaymentPreference, parseCustomPaymentRef } = require('./customOrdersPayment.service');
 
@@ -71,6 +71,8 @@ function sanitizeOrderForCustomer(order, { includeFiles = true } = {}) {
     art_fee_amount: order.art_fee_amount,
     product_unit_amount: order.product_unit_amount,
     shipping_amount: order.shipping_amount,
+    shipping_cep: order.shipping_cep,
+    shipping_method: order.shipping_method,
     product_payment_total: getProductPaymentTotal(order),
     art_payment_status: order.art_payment_status,
     product_payment_status: order.product_payment_status,
@@ -348,18 +350,24 @@ async function quoteCustomOrderShipping(id, cepOverride) {
   }
 
   const pkg = getCustomOrderPackage(order);
-  const options = await getShippingQuote({
+  const options = appendPickupToQuoteOptions(
     cep,
-    weight: pkg.weight,
-    height: pkg.height,
-    width: pkg.width,
-    length: pkg.length,
-  });
+    await getShippingQuote({
+      cep,
+      weight: pkg.weight,
+      height: pkg.height,
+      width: pkg.width,
+      length: pkg.length,
+    }),
+  );
 
   return {
     cep,
     package: pkg,
-    options: options || [],
+    options: (options || []).map((option) => ({
+      ...option,
+      deadline: option.delivery_time || option.deadline || '',
+    })),
   };
 }
 
@@ -446,7 +454,12 @@ async function startArtFeePayment(id, user, returnOrigin) {
   return payment;
 }
 
-async function startProductPayment(id, user, returnOrigin) {
+async function quoteCustomOrderShippingForCustomer(id, user, cepOverride) {
+  const order = await getCustomOrderForCustomer(id, user);
+  return quoteCustomOrderShipping(order.id, cepOverride || order.shipping_cep);
+}
+
+async function startProductPayment(id, user, returnOrigin, paymentPayload = {}) {
   const order = await getCustomOrderById(id);
   assertCustomerOwnsOrder(order, user);
 
@@ -461,8 +474,30 @@ async function startProductPayment(id, user, returnOrigin) {
     throw err;
   }
 
+  const pkg = getCustomOrderPackage(order);
+  const resolvedShipping = await resolveShippingSelection({
+    cep: onlyDigits(paymentPayload.cep || order.shipping_cep || ''),
+    package: pkg,
+    shipping: paymentPayload.shipping,
+    pickup_acknowledged: paymentPayload.pickup_acknowledged === true,
+  });
+
+  const { error: shippingUpdateError } = await supabase
+    .from('custom_orders')
+    .update({
+      shipping_amount: resolvedShipping.price,
+      shipping_method: resolvedShipping.label,
+      shipping_service_id: resolvedShipping.id,
+      shipping_cep: onlyDigits(paymentPayload.cep || order.shipping_cep || '') || order.shipping_cep,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id);
+
+  if (shippingUpdateError) throw new Error(shippingUpdateError.message);
+
+  const freshOrder = await getCustomOrderById(id);
   const payment = await createCustomOrderPaymentPreference({
-    order,
+    order: freshOrder,
     phase: 'product',
     returnOrigin,
   });
@@ -541,6 +576,7 @@ module.exports = {
   getCustomOrderByToken,
   updateCustomOrder,
   quoteCustomOrderShipping,
+  quoteCustomOrderShippingForCustomer,
   incrementRevision,
   approveCustomOrderForProduction,
   startArtFeePayment,

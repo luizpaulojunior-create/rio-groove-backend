@@ -8,7 +8,8 @@
     "start": "node src/server.js",
     "lint": "node --check src/app.js && node --check src/server.js",
     "test": "node --test --require ./test/setup-env.js test/*.test.js",
-    "ga4:report": "node scripts/ga4-funnel-report.mjs"
+    "ga4:report": "node scripts/ga4-funnel-report.mjs",
+    "audit:prod": "node scripts/audit-production.mjs"
   },
   "engines": {
     "node": ">=20"

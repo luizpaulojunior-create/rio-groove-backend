@@ -1,5 +1,10 @@
 const env = require('../config/env');
 const { getValidToken } = require('./melhorEnvioAuth.service');
+const { onlyDigits } = require('../utils/order');
+
+const PICKUP_SHIPPING_ID = 'pickup-rio';
+const PICKUP_SHIPPING_LABEL = 'Retirada no Rio — Taquara ou apps de entrega';
+const RIO_PICKUP_CEP_PATTERN = /^2[0-8]\d{6}$/;
 
 const STABLE_PROVIDER_PATTERNS = [
   /correios/i,
@@ -66,8 +71,101 @@ function sortOptions(options) {
 
 function filterValidOptions(options) {
   return options.filter(function (option) {
-    return option.price > 0 && option.company && option.name;
+    if (!option.company || !option.name) return false;
+    if (Number(option.price) > 0) return true;
+    return String(option.id || '') === PICKUP_SHIPPING_ID;
   });
+}
+
+function isRioPickupCep(cep) {
+  return RIO_PICKUP_CEP_PATTERN.test(onlyDigits(cep || ''));
+}
+
+function isPickupShippingId(id) {
+  return String(id || '') === PICKUP_SHIPPING_ID;
+}
+
+function isPickupShippingSelection(shipping = {}) {
+  const id = String(shipping.id || '');
+  const label = String(shipping.label || '').toLowerCase();
+  return isPickupShippingId(id) || label.includes('retirada');
+}
+
+function buildPickupShippingOption(cep) {
+  if (!isRioPickupCep(cep)) return null;
+  return {
+    id: PICKUP_SHIPPING_ID,
+    name: 'Retirada presencial',
+    company: 'Retirada Local',
+    label: PICKUP_SHIPPING_LABEL,
+    price: 0,
+    delivery_time: 'Após confirmação do pagamento — combine conosco',
+    delivery_days: 0,
+    currency: 'BRL',
+    service_code: 'pickup',
+    kind: 'pickup',
+  };
+}
+
+function appendPickupToQuoteOptions(cep, options = []) {
+  const pickup = buildPickupShippingOption(cep);
+  if (!pickup) return options;
+  if (options.some((option) => isPickupShippingId(option.id))) return options;
+  return [...options, pickup];
+}
+
+async function resolveShippingSelection({ cep, package: pkg, shipping, pickup_acknowledged }) {
+  const cepDigits = onlyDigits(cep || '');
+  if (cepDigits.length !== 8) {
+    throw new Error('CEP inválido para cotação de frete.');
+  }
+
+  const selection = shipping || {};
+  const selectionId = String(selection.id || '').trim();
+  if (!selectionId) {
+    throw new Error('Selecione uma opção de frete.');
+  }
+
+  if (isPickupShippingSelection(selection)) {
+    if (!isRioPickupCep(cepDigits)) {
+      throw new Error('Retirada presencial disponível apenas para CEPs do Rio de Janeiro (20–28).');
+    }
+    if (!pickup_acknowledged) {
+      throw new Error('Confirme os termos da retirada presencial para continuar.');
+    }
+    const pickup = buildPickupShippingOption(cepDigits);
+    return {
+      id: pickup.id,
+      label: pickup.label,
+      price: 0,
+      deadline: pickup.delivery_time,
+      company: pickup.company,
+      provider: pickup.company,
+    };
+  }
+
+  const carrierOptions = await getShippingQuote({
+    cep: cepDigits,
+    weight: pkg?.weight,
+    height: pkg?.height,
+    width: pkg?.width,
+    length: pkg?.length,
+  });
+  const options = appendPickupToQuoteOptions(cepDigits, carrierOptions);
+  const match = options.find((option) => String(option.id) === selectionId);
+  if (!match) {
+    throw new Error('Opção de frete inválida ou indisponível.');
+  }
+
+  return {
+    id: String(match.id),
+    label: match.label || `${match.company} / ${match.name}`,
+    price: Number(match.price) || 0,
+    deadline: match.delivery_time || '',
+    company: match.company || '',
+    provider: match.company || '',
+    service_code: match.service_code || '',
+  };
 }
 
 async function getShippingQuote({ cep, weight, height, width, length }) {
@@ -1000,4 +1098,12 @@ module.exports = {
   fetchMelhorEnvioTracking,
   syncOrderTrackingFromMelhorEnvio,
   mapMelhorEnvioStatusToFulfillment,
+  PICKUP_SHIPPING_ID,
+  PICKUP_SHIPPING_LABEL,
+  isRioPickupCep,
+  isPickupShippingId,
+  isPickupShippingSelection,
+  buildPickupShippingOption,
+  appendPickupToQuoteOptions,
+  resolveShippingSelection,
 };
