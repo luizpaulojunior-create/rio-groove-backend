@@ -25,9 +25,28 @@ const DB_TO_FULFILLMENT = {
   fulfilled: 'entregue',
 };
 
+function isOrderPaid(order) {
+  if (!order) return false;
+  const paymentStatus = String(order.payment_status || '').toLowerCase();
+  const orderStatus = String(order.status || '').toLowerCase();
+  return (
+    paymentStatus === 'paid' ||
+    paymentStatus === 'approved' ||
+    Boolean(order.paid_at) ||
+    orderStatus === 'paid' ||
+    orderStatus === 'fulfilled'
+  );
+}
+
 function resolveFulfillmentStatus(order) {
-  if (order?.fulfillment_status && FULFILLMENT_STATUSES.has(order.fulfillment_status)) {
-    return order.fulfillment_status;
+  const paid = isOrderPaid(order);
+  const fulfillment = order?.fulfillment_status;
+
+  if (fulfillment && FULFILLMENT_STATUSES.has(fulfillment)) {
+    if (paid && fulfillment === 'aguardando_pagamento') {
+      return 'pagamento_aprovado';
+    }
+    return fulfillment;
   }
 
   const dbStatus = String(order?.status || 'awaiting_payment').toLowerCase();
@@ -35,11 +54,31 @@ function resolveFulfillmentStatus(order) {
     return DB_TO_FULFILLMENT[dbStatus];
   }
 
-  if (order?.payment_status === 'paid' || order?.paid_at) {
+  if (paid) {
     return 'pagamento_aprovado';
   }
 
   return 'aguardando_pagamento';
+}
+
+function needsFulfillmentRepair(order) {
+  if (!order || !isOrderPaid(order)) return false;
+  const fulfillment = resolveFulfillmentStatus(order);
+  return fulfillment === 'pagamento_aprovado' && order.fulfillment_status === 'aguardando_pagamento';
+}
+
+function sanitizeOrderForResponse(order) {
+  if (!order) return order;
+
+  const fulfillmentStatus = resolveFulfillmentStatus(order);
+  const paid = isOrderPaid(order);
+
+  return {
+    ...order,
+    fulfillment_status: fulfillmentStatus,
+    status: paid ? 'paid' : (order.status || 'awaiting_payment'),
+    payment_status: paid ? 'paid' : (order.payment_status || 'pending'),
+  };
 }
 
 function buildOrderUpdatesFromFulfillment(fulfillmentStatus, existingOrder = {}) {
@@ -105,7 +144,10 @@ function appendOrderLog(existingLogs, entry) {
 
 module.exports = {
   FULFILLMENT_STATUSES,
+  isOrderPaid,
   resolveFulfillmentStatus,
+  needsFulfillmentRepair,
+  sanitizeOrderForResponse,
   buildOrderUpdatesFromFulfillment,
   appendOrderLog,
 };

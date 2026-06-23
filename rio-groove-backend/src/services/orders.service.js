@@ -1,4 +1,30 @@
 const supabase = require('../lib/supabase');
+const {
+  needsFulfillmentRepair,
+  sanitizeOrderForResponse,
+  buildOrderUpdatesFromFulfillment,
+} = require('../utils/orderFulfillment');
+
+async function repairOrderFulfillmentIfNeeded(order) {
+  if (!order?.id || !needsFulfillmentRepair(order)) {
+    return sanitizeOrderForResponse(order);
+  }
+
+  try {
+    const updates = buildOrderUpdatesFromFulfillment('pagamento_aprovado', order);
+    const repaired = await updateOrderById(order.id, updates);
+    console.log('[OrdersService] fulfillment_status reparado automaticamente', {
+      orderId: order.id,
+      orderNumber: order.order_number,
+      from: order.fulfillment_status,
+      to: repaired.fulfillment_status,
+    });
+    return sanitizeOrderForResponse(repaired);
+  } catch (error) {
+    console.error('[OrdersService] Falha ao reparar fulfillment_status:', error.message);
+    return sanitizeOrderForResponse(order);
+  }
+}
 
 async function createOrder({ order }) {
   const { data, error } = await supabase
@@ -91,7 +117,9 @@ async function getOrders(options = {}) {
     .range(offset, offset + limit - 1);
 
   if (error) throw error;
-  return { orders: data || [], total: count || 0 };
+
+  const orders = await Promise.all((data || []).map((order) => repairOrderFulfillmentIfNeeded(order)));
+  return { orders, total: count || 0 };
 }
 
 async function getOrderItems(orderId) {
@@ -110,7 +138,8 @@ async function getOrderWithItems(reference) {
   if (!order) return null;
 
   const items = order.order_items || await getOrderItems(order.id);
-  return { ...order, items, order_items: items };
+  const sanitized = await repairOrderFulfillmentIfNeeded({ ...order, items, order_items: items });
+  return sanitized;
 }
 
 async function registerWebhookEvent({ provider, topic, action, resourceId, payload }) {

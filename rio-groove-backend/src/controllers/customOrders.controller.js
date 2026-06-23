@@ -177,6 +177,54 @@ async function quoteCustomOrderShipping(req, res, next) {
   }
 }
 
+async function reconcileMyCustomOrderPayment(req, res, next) {
+  try {
+    const { reconcileCustomOrderPaymentReturn } = require('../services/payments.service');
+    const paymentId =
+      req.body?.payment_id ||
+      req.body?.paymentId ||
+      req.query.payment_id ||
+      req.query.paymentId;
+
+    const result = await reconcileCustomOrderPaymentReturn({
+      orderId: req.params.id,
+      paymentId,
+      user: req.user,
+    });
+
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ ok: false, error: err.message });
+    }
+    next(err);
+  }
+}
+
+async function reconcileCustomOrderPaymentAdmin(req, res, next) {
+  try {
+    const { reconcileCustomOrderPaymentReturn } = require('../services/payments.service');
+    const paymentId =
+      req.body?.payment_id ||
+      req.body?.paymentId ||
+      req.query.payment_id ||
+      req.query.paymentId;
+
+    const result = await reconcileCustomOrderPaymentReturn({
+      orderId: req.params.id,
+      paymentId,
+      user: null,
+    });
+
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ ok: false, error: err.message });
+    }
+    next(err);
+  }
+}
+
 module.exports = {
   submitCustomOrder,
   listCustomOrders,
@@ -190,4 +238,6 @@ module.exports = {
   payArtFee,
   payProduct,
   quoteCustomOrderShipping,
+  reconcileMyCustomOrderPayment,
+  reconcileCustomOrderPaymentAdmin,
 };

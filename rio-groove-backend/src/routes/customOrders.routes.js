@@ -18,6 +18,8 @@ const {
   payArtFee,
   payProduct,
   quoteCustomOrderShipping,
+  reconcileMyCustomOrderPayment,
+  reconcileCustomOrderPaymentAdmin,
 } = require('../controllers/customOrders.controller');
 
 const router = express.Router();
@@ -41,6 +43,7 @@ router.get('/api/custom-orders/mine/:id', requireCustomerAuth, getMyCustomOrder)
 router.post('/api/custom-orders/mine/:id/pay-art', requireCustomerAuth, payArtFee);
 router.post('/api/custom-orders/mine/:id/approve', requireCustomerAuth, approveCustomOrder);
 router.post('/api/custom-orders/mine/:id/pay-product', requireCustomerAuth, payProduct);
+router.post('/api/custom-orders/mine/:id/reconcile-payment', requireCustomerAuth, reconcileMyCustomOrderPayment);
 
 router.get(
   '/api/custom-orders',
@@ -76,6 +79,13 @@ router.post(
   requireAdminAuth,
   requireMinRole('editor'),
   quoteCustomOrderShipping,
+);
+
+router.post(
+  '/api/custom-orders/:id/reconcile-payment',
+  requireAdminAuth,
+  requireMinRole('editor'),
+  reconcileCustomOrderPaymentAdmin,
 );
 
 module.exports = router;

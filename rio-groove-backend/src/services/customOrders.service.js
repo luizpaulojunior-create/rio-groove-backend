@@ -492,7 +492,7 @@ async function applyCustomOrderPaymentUpdate(payment) {
       phase: payment.metadata.payment_phase,
     };
   }
-  if (!match) return { ignored: true };
+  if (!match) return { ignored: true, reason: 'Referência de pagamento personalizado não reconhecida.' };
 
   if (String(payment.status || '').toLowerCase() !== 'approved') {
     return { ignored: true, reason: 'Pagamento não aprovado.' };
@@ -500,6 +500,13 @@ async function applyCustomOrderPaymentUpdate(payment) {
 
   const order = await getCustomOrderById(match.orderId);
   if (!order) return { ignored: true, reason: 'Pedido personalizado não encontrado.' };
+
+  if (match.phase === 'art' && order.art_payment_status === 'paid') {
+    return { ignored: false, alreadyPaid: true, order, phase: 'art' };
+  }
+  if (match.phase === 'product' && order.product_payment_status === 'paid') {
+    return { ignored: false, alreadyPaid: true, order, phase: 'product' };
+  }
 
   const now = new Date().toISOString();
   const updates = { updated_at: now, payment_status: 'approved' };
@@ -542,4 +549,5 @@ module.exports = {
   sanitizeOrderForCustomer,
   canViewMockup,
   getProductPaymentTotal,
+  assertCustomerOwnsOrder,
 };

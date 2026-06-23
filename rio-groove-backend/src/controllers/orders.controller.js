@@ -6,6 +6,7 @@ const {
   FULFILLMENT_STATUSES,
   buildOrderUpdatesFromFulfillment,
   appendOrderLog,
+  isOrderPaid,
 } = require('../utils/orderFulfillment');
 const { restoreStockForOrder } = require('../services/stockCheckout.service');
 const {
@@ -16,7 +17,7 @@ const {
 const { reconcileMercadoPagoReturn } = require('../services/payments.service');
 
 const getAllOrders = asyncHandler(async (req, res) => {
-  const limit = parseInt(req.query.limit, 10) || 50;
+  const limit = parseInt(req.query.limit, 10) || 200;
   const offset = parseInt(req.query.offset, 10) || 0;
   const result = await getOrders({ limit, offset });
   return res.json(result);
@@ -165,6 +166,41 @@ const reconcileOrderPayment = asyncHandler(async (req, res) => {
   }
 });
 
+const reconcileOrderPaymentAdmin = asyncHandler(async (req, res) => {
+  const reference = req.params.reference;
+  const paymentId =
+    req.body?.payment_id ||
+    req.body?.paymentId ||
+    req.query.payment_id ||
+    req.query.paymentId;
+
+  if (!paymentId) {
+    return res.status(400).json({ message: 'Informe payment_id do Mercado Pago.' });
+  }
+
+  try {
+    const result = await reconcileMercadoPagoReturn({
+      paymentId,
+      externalReference: reference,
+      bypassEmailCheck: true,
+    });
+
+    const order = await getOrderWithItems(reference);
+    if (!order) {
+      return res.status(404).json({ message: 'Pedido não encontrado.' });
+    }
+
+    return res.json({
+      ...result,
+      order,
+    });
+  } catch (error) {
+    return res.status(error.status || 400).json({
+      message: error.message || 'Falha ao reconciliar pagamento.',
+    });
+  }
+});
+
 const updateOrderStatus = asyncHandler(async (req, res) => {
   const { status, tracking_code, tracking_url, log_message, log_user } = req.body;
 
@@ -177,6 +213,12 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
   const existingOrder = await getOrderByReference(req.params.id);
   if (!existingOrder) {
     return res.status(404).json({ message: 'Pedido não encontrado.' });
+  }
+
+  if (status === 'aguardando_pagamento' && isOrderPaid(existingOrder)) {
+    return res.status(400).json({
+      message: 'Pedido já pago não pode voltar para aguardando pagamento.',
+    });
   }
 
   const updates = buildOrderUpdatesFromFulfillment(status, existingOrder);
@@ -217,5 +259,6 @@ module.exports = {
   getOrder,
   getOrderPublicStatus,
   reconcileOrderPayment,
+  reconcileOrderPaymentAdmin,
   updateOrderStatus
 };

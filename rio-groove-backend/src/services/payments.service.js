@@ -3,6 +3,7 @@ const {
   getOrderByExternalReference,
   getOrderByReference,
   updateOrderByExternalReference,
+  updateOrderById,
   getOrderWithItems,
   registerWebhookEvent
 } = require('./orders.service');
@@ -168,7 +169,7 @@ async function applyMercadoPagoPaymentUpdate(payment, merchantOrder = null, opti
     return { ignored: true, reason: 'Pedido não encontrado.' };
   }
 
-  if (payment.status === 'approved' && existingOrder.status === 'paid') {
+  if (String(payment.status || '').toLowerCase() === 'approved' && existingOrder.status === 'paid') {
     console.log('[PaymentsService] Pedido já processado anteriormente');
     if (!options.skipRaceGuard) processingWebhooks.delete(externalReference);
     return {
@@ -177,8 +178,9 @@ async function applyMercadoPagoPaymentUpdate(payment, merchantOrder = null, opti
     };
   }
 
+  const paymentApproved = String(payment.status || '').toLowerCase() === 'approved';
   const statusMap = mapMercadoPagoPaymentStatus(payment.status);
-  const isCancelled = ['cancelled', 'rejected', 'refunded', 'charged_back'].includes(payment.status);
+  const isCancelled = ['cancelled', 'rejected', 'refunded', 'charged_back'].includes(String(payment.status || '').toLowerCase());
   const wasNotCancelled = !['cancelled', 'rejected', 'refunded', 'charged_back'].includes(existingOrder.mercado_pago_status);
 
   const orderUpdates = {
@@ -188,11 +190,11 @@ async function applyMercadoPagoPaymentUpdate(payment, merchantOrder = null, opti
     mercado_pago_merchant_order_id: payment.order?.id ? String(payment.order.id) : existingOrder.mercado_pago_merchant_order_id,
     mercado_pago_status: payment.status || null,
     mercado_pago_status_detail: payment.status_detail || null,
-    paid_at: payment.status === 'approved' ? new Date().toISOString() : existingOrder.paid_at,
+    paid_at: paymentApproved ? new Date().toISOString() : existingOrder.paid_at,
     payment_payload: payment,
   };
 
-  if (payment.status === 'approved') {
+  if (paymentApproved) {
     orderUpdates.fulfillment_status = 'pagamento_aprovado';
   } else if (isCancelled) {
     orderUpdates.fulfillment_status = 'cancelado';
@@ -220,7 +222,7 @@ async function applyMercadoPagoPaymentUpdate(payment, merchantOrder = null, opti
   });
   const hasAlreadyNotified = Boolean(updatedOrder.shipping_notification_sent_at);
 
-  if (payment.status === 'approved') {
+  if (paymentApproved) {
     console.log('[PaymentsService] Pedido marcado como paid antes das notificações');
 
     const orderWithItems = await getOrderWithItems(existingOrder.external_reference);
@@ -346,8 +348,9 @@ async function applyMercadoPagoPaymentUpdate(payment, merchantOrder = null, opti
   };
 }
 
-async function reconcileMercadoPagoReturn({ paymentId, externalReference, emailHint }) {
+async function reconcileMercadoPagoReturn({ paymentId, externalReference, emailHint, bypassEmailCheck = false }) {
   const { verifyOrderPublicStatusAccess } = require('../utils/order-public-status');
+  const { isOrderPaid, needsFulfillmentRepair } = require('../utils/orderFulfillment');
 
   if (!paymentId) {
     const err = new Error('Informe payment_id.');
@@ -371,17 +374,25 @@ async function reconcileMercadoPagoReturn({ paymentId, externalReference, emailH
     throw err;
   }
 
-  const access = verifyOrderPublicStatusAccess(existingOrder, emailHint);
+  const access = bypassEmailCheck
+    ? { ok: true }
+    : verifyOrderPublicStatusAccess(existingOrder, emailHint);
   if (!access.ok) {
     const err = new Error(access.status === 403 ? PUBLIC_ORDER_DENIED : access.message);
     err.status = access.status === 403 ? 404 : access.status;
     throw err;
   }
 
-  if (existingOrder.status === 'paid') {
+  if (isOrderPaid(existingOrder)) {
+    const stale = needsFulfillmentRepair(existingOrder);
+    if (stale) {
+      const { buildOrderUpdatesFromFulfillment } = require('../utils/orderFulfillment');
+      await updateOrderById(existingOrder.id, buildOrderUpdatesFromFulfillment('pagamento_aprovado', existingOrder));
+    }
     return {
       reconciled: true,
       alreadyPaid: true,
+      repaired: stale,
       paymentStatus: existingOrder.payment_status || 'approved',
       orderId: existingOrder.id,
     };
@@ -400,7 +411,8 @@ async function reconcileMercadoPagoReturn({ paymentId, externalReference, emailH
     throw err;
   }
 
-  if (payment.status !== 'approved') {
+  const paymentApproved = String(payment.status || '').toLowerCase() === 'approved';
+  if (!paymentApproved) {
     return {
       reconciled: false,
       paymentStatus: payment.status,
@@ -491,8 +503,114 @@ async function processMercadoPagoWebhook(req) {
   return applyMercadoPagoPaymentUpdate(payment, merchantOrder);
 }
 
+async function reconcileCustomOrderPaymentReturn({ orderId, paymentId, user = null }) {
+  const { parseCustomPaymentRef } = require('./customOrdersPayment.service');
+  const {
+    getCustomOrderById,
+    applyCustomOrderPaymentUpdate,
+    assertCustomerOwnsOrder,
+    getCustomOrderForCustomer,
+  } = require('./customOrders.service');
+
+  if (!paymentId) {
+    const err = new Error('Informe payment_id do Mercado Pago.');
+    err.status = 400;
+    throw err;
+  }
+
+  const id = String(orderId || '').trim();
+  if (!id) {
+    const err = new Error('Informe o id do pedido personalizado.');
+    err.status = 400;
+    throw err;
+  }
+
+  const order = await getCustomOrderById(id);
+  if (!order) {
+    const err = new Error('Pedido personalizado não encontrado.');
+    err.status = 404;
+    throw err;
+  }
+
+  if (user) {
+    assertCustomerOwnsOrder(order, user);
+  }
+
+  const payment = await fetchPaymentDetails(String(paymentId));
+  const paymentStatus = String(payment.status || '').toLowerCase();
+
+  const ref = getNotificationReference(payment, null);
+  let match = parseCustomPaymentRef(ref);
+  if (!match && payment.metadata?.custom_order_id && payment.metadata?.payment_phase) {
+    match = {
+      orderId: String(payment.metadata.custom_order_id),
+      phase: String(payment.metadata.payment_phase),
+    };
+  }
+
+  if (!match || match.orderId !== id) {
+    const err = new Error('Este pagamento do Mercado Pago não pertence a este pedido personalizado.');
+    err.status = 400;
+    throw err;
+  }
+
+  if (paymentStatus !== 'approved') {
+    return {
+      reconciled: false,
+      paymentStatus,
+      reason: 'Pagamento ainda não aprovado no Mercado Pago.',
+      phase: match.phase,
+    };
+  }
+
+  if (match.phase === 'art' && order.art_payment_status === 'paid') {
+    return {
+      reconciled: true,
+      alreadyPaid: true,
+      paymentStatus,
+      phase: 'art',
+      order: user ? await getCustomOrderForCustomer(id, user) : order,
+    };
+  }
+
+  if (match.phase === 'product' && order.product_payment_status === 'paid') {
+    return {
+      reconciled: true,
+      alreadyPaid: true,
+      paymentStatus,
+      phase: 'product',
+      order: user ? await getCustomOrderForCustomer(id, user) : order,
+    };
+  }
+
+  const result = await applyCustomOrderPaymentUpdate(payment);
+  if (result.ignored) {
+    return {
+      reconciled: false,
+      paymentStatus,
+      reason: result.reason || 'Não foi possível aplicar o pagamento.',
+      phase: match.phase,
+    };
+  }
+
+  const refreshed = user
+    ? await getCustomOrderForCustomer(id, user)
+    : await getCustomOrderById(id);
+
+  return {
+    reconciled: true,
+    alreadyPaid: Boolean(result.alreadyPaid),
+    paymentStatus,
+    phase: result.phase,
+    order: refreshed,
+  };
+}
+
 module.exports = {
   extractNotificationInfo,
   processMercadoPagoWebhook,
   reconcileMercadoPagoReturn,
+  reconcileCustomOrderPaymentReturn,
+  fetchPaymentDetails,
+  getNotificationReference,
 };
