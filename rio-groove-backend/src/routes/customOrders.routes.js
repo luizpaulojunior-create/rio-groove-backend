@@ -13,6 +13,7 @@ const {
   getMyCustomOrder,
   getCustomOrderPublic,
   patchCustomOrder,
+  deleteCustomOrderFileHandler,
   incrementRevision,
   approveCustomOrder,
   payArtFee,
@@ -67,6 +68,13 @@ router.patch(
   requireMinRole('editor'),
   upload.single('mockup'),
   patchCustomOrder,
+);
+
+router.delete(
+  '/api/custom-orders/:id/files/:fileId',
+  requireAdminAuth,
+  requireMinRole('editor'),
+  deleteCustomOrderFileHandler,
 );
 
 router.post(

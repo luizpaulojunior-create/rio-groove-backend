@@ -109,6 +109,18 @@ async function patchCustomOrder(req, res, next) {
   }
 }
 
+async function deleteCustomOrderFileHandler(req, res, next) {
+  try {
+    const order = await customOrdersService.deleteCustomOrderFile(req.params.id, req.params.fileId);
+    res.json(order);
+  } catch (err) {
+    if (err.statusCode === 404) {
+      return res.status(404).json({ ok: false, error: err.message });
+    }
+    next(err);
+  }
+}
+
 async function incrementRevision(req, res, next) {
   try {
     const order = await customOrdersService.incrementRevision(req.params.id);
@@ -254,6 +266,7 @@ module.exports = {
   getMyCustomOrder,
   getCustomOrderPublic,
   patchCustomOrder,
+  deleteCustomOrderFileHandler,
   incrementRevision,
   approveCustomOrder,
   payArtFee,

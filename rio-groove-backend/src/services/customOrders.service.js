@@ -340,6 +340,77 @@ async function updateCustomOrder(id, patch, mockupFile = null) {
   return getCustomOrderById(id);
 }
 
+function storagePathFromPublicUrl(url, bucket) {
+  if (!url) return null;
+  const marker = `/object/public/${bucket}/`;
+  const idx = String(url).indexOf(marker);
+  if (idx === -1) return null;
+  return decodeURIComponent(String(url).slice(idx + marker.length).split('?')[0]);
+}
+
+async function deleteCustomOrderFile(orderId, fileId) {
+  const order = await getCustomOrderById(orderId);
+  if (!order) {
+    const err = new Error('Pedido não encontrado.');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const file = (order.custom_order_files || []).find((row) => row.id === fileId);
+  if (!file) {
+    const err = new Error('Arquivo não encontrado neste pedido.');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const { error } = await supabase
+    .from('custom_order_files')
+    .delete()
+    .eq('id', fileId)
+    .eq('custom_order_id', orderId);
+
+  if (error) throw new Error(error.message);
+
+  const storagePath = storagePathFromPublicUrl(file.storage_url, STORAGE_BUCKET);
+  if (storagePath) {
+    const { error: storageError } = await supabase.storage.from(STORAGE_BUCKET).remove([storagePath]);
+    if (storageError) {
+      console.warn('[customOrders] storage remove warning:', storageError.message);
+    }
+  }
+
+  if (file.kind === 'mockup') {
+    const { data: remainingMockups } = await supabase
+      .from('custom_order_files')
+      .select('id')
+      .eq('custom_order_id', orderId)
+      .eq('kind', 'mockup');
+
+    if (!remainingMockups?.length) {
+      const updates = { updated_at: new Date().toISOString() };
+      if (
+        order.order_type === 'exclusive_art'
+        && order.status === 'mockup_ready'
+        && order.art_payment_status !== 'paid'
+      ) {
+        updates.status = 'reviewing';
+        updates.mockup_ready_at = null;
+      } else if (
+        order.order_type === 'ready_art'
+        && order.status === 'awaiting_product_payment'
+        && order.product_payment_status !== 'paid'
+      ) {
+        updates.status = 'reviewing';
+      }
+      if (Object.keys(updates).length > 1) {
+        await supabase.from('custom_orders').update(updates).eq('id', orderId);
+      }
+    }
+  }
+
+  return getCustomOrderById(orderId);
+}
+
 async function quoteCustomOrderShipping(id, cepOverride) {
   const order = await getCustomOrderById(id);
   if (!order) {
@@ -581,6 +652,7 @@ module.exports = {
   getCustomOrderForCustomer,
   getCustomOrderByToken,
   updateCustomOrder,
+  deleteCustomOrderFile,
   quoteCustomOrderShipping,
   quoteCustomOrderShippingForCustomer,
   incrementRevision,
