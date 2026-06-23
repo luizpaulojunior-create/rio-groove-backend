@@ -107,14 +107,31 @@ async function getOrderByReference(reference) {
 }
 
 async function getOrders(options = {}) {
-  const limit = options.limit || 50;
+  const limit = options.limit || 200;
   const offset = options.offset || 0;
-  
-  const { data, error, count } = await supabase
+  const search = String(options.search || '').trim();
+
+  let query = supabase
     .from('orders')
     .select('*, order_items(*)', { count: 'exact' })
-    .order('created_at', { ascending: false })
-    .range(offset, offset + limit - 1);
+    .order('created_at', { ascending: false });
+
+  if (search) {
+    const term = search.replace(/[%_,]/g, '').trim();
+    if (term) {
+      const pattern = `%${term}%`;
+      query = query.or(
+        [
+          `order_number.ilike.${pattern}`,
+          `customer_name.ilike.${pattern}`,
+          `customer_email.ilike.${pattern}`,
+          `external_reference.ilike.${pattern}`,
+        ].join(','),
+      );
+    }
+  }
+
+  const { data, error, count } = await query.range(offset, offset + limit - 1);
 
   if (error) throw error;
 

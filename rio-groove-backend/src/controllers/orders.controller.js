@@ -19,7 +19,8 @@ const { reconcileMercadoPagoReturn } = require('../services/payments.service');
 const getAllOrders = asyncHandler(async (req, res) => {
   const limit = parseInt(req.query.limit, 10) || 200;
   const offset = parseInt(req.query.offset, 10) || 0;
-  const result = await getOrders({ limit, offset });
+  const search = req.query.search || req.query.q || '';
+  const result = await getOrders({ limit, offset, search });
   return res.json(result);
 });
 
