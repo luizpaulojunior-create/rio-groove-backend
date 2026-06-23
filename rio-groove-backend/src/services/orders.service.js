@@ -113,7 +113,7 @@ async function getOrders(options = {}) {
 
   let query = supabase
     .from('orders')
-    .select('*, order_items(*)', { count: 'exact' })
+    .select('*', { count: 'exact' })
     .order('created_at', { ascending: false });
 
   if (search) {
@@ -126,6 +126,7 @@ async function getOrders(options = {}) {
           `customer_name.ilike.${pattern}`,
           `customer_email.ilike.${pattern}`,
           `external_reference.ilike.${pattern}`,
+          `id.ilike.${pattern}`,
         ].join(','),
       );
     }
@@ -135,7 +136,22 @@ async function getOrders(options = {}) {
 
   if (error) throw error;
 
-  const orders = await Promise.all((data || []).map((order) => repairOrderFulfillmentIfNeeded(order)));
+  const orders = await Promise.all(
+    (data || []).map(async (order) => {
+      let items = [];
+      try {
+        items = await getOrderItems(order.id);
+      } catch (itemsError) {
+        console.error('[OrdersService] Falha ao carregar itens do pedido', {
+          orderId: order.id,
+          orderNumber: order.order_number,
+          error: itemsError.message,
+        });
+      }
+      return repairOrderFulfillmentIfNeeded({ ...order, order_items: items, items });
+    }),
+  );
+
   return { orders, total: count || 0 };
 }
 
