@@ -309,6 +309,12 @@ async function updateCustomOrder(id, patch, mockupFile = null) {
   }
 
   if (mockupFile) {
+    await supabase
+      .from('custom_order_files')
+      .delete()
+      .eq('custom_order_id', id)
+      .eq('kind', 'mockup');
+
     const url = await uploadImage(
       mockupFile,
       STORAGE_BUCKET,
