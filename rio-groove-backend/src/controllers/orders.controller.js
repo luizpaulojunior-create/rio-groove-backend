@@ -222,6 +222,12 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
     });
   }
 
+  if (status === 'cancelado' && isOrderPaid(existingOrder)) {
+    return res.status(400).json({
+      message: 'Pedido com pagamento confirmado não pode ser cancelado. Estorne no Mercado Pago primeiro.',
+    });
+  }
+
   const updates = buildOrderUpdatesFromFulfillment(status, existingOrder);
 
   if (tracking_code !== undefined && tracking_code !== null && String(tracking_code).trim()) {

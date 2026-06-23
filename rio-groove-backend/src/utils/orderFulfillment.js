@@ -38,6 +38,14 @@ function isOrderPaid(order) {
   );
 }
 
+function canRefundPaidOrder(order, payment) {
+  if (!isOrderPaid(order)) return true;
+  if (!payment?.id || !order?.mercado_pago_payment_id) return false;
+  const samePayment = String(payment.id) === String(order.mercado_pago_payment_id);
+  const hardRefund = ['refunded', 'charged_back'].includes(String(payment?.status || '').toLowerCase());
+  return samePayment && hardRefund;
+}
+
 function isPaidButWronglyCancelled(order) {
   if (!isOrderPaid(order) || order?.fulfillment_status !== 'cancelado') {
     return false;
@@ -121,6 +129,9 @@ function buildOrderUpdatesFromFulfillment(fulfillmentStatus, existingOrder = {})
       }
       break;
     case 'cancelado':
+      if (isOrderPaid(existingOrder)) {
+        throw new Error('Pedido com pagamento confirmado não pode ser cancelado sem estorno no Mercado Pago.');
+      }
       updates.status = 'cancelled';
       updates.payment_status = 'failed';
       break;
@@ -163,6 +174,7 @@ function appendOrderLog(existingLogs, entry) {
 module.exports = {
   FULFILLMENT_STATUSES,
   isOrderPaid,
+  canRefundPaidOrder,
   isPaidButWronglyCancelled,
   resolveFulfillmentStatus,
   needsFulfillmentRepair,

@@ -169,26 +169,72 @@ async function applyMercadoPagoPaymentUpdate(payment, merchantOrder = null, opti
     return { ignored: true, reason: 'Pedido não encontrado.' };
   }
 
-  if (String(payment.status || '').toLowerCase() === 'approved' && existingOrder.status === 'paid') {
-    console.log('[PaymentsService] Pedido já processado anteriormente');
-    if (!options.skipRaceGuard) processingWebhooks.delete(externalReference);
-    return {
-      ignored: true,
-      reason: 'Pedido já processado anteriormente.'
-    };
-  }
+  const {
+    isOrderPaid,
+    needsFulfillmentRepair,
+    buildOrderUpdatesFromFulfillment,
+    appendOrderLog,
+    canRefundPaidOrder,
+  } = require('../utils/orderFulfillment');
 
   const paymentApproved = String(payment.status || '').toLowerCase() === 'approved';
   const statusMap = mapMercadoPagoPaymentStatus(payment.status);
   const isCancelled = ['cancelled', 'rejected', 'refunded', 'charged_back'].includes(String(payment.status || '').toLowerCase());
-  const wasNotCancelled = !['cancelled', 'rejected', 'refunded', 'charged_back'].includes(existingOrder.mercado_pago_status);
-  const { isOrderPaid } = require('../utils/orderFulfillment');
+  const wasNotCancelled = !['cancelled', 'rejected', 'refunded', 'charged_back'].includes(String(existingOrder.mercado_pago_status || '').toLowerCase());
   const alreadyPaid = isOrderPaid(existingOrder);
-  const sameApprovedPayment =
-    payment.id &&
-    existingOrder.mercado_pago_payment_id &&
-    String(payment.id) === String(existingOrder.mercado_pago_payment_id);
-  const hardRefund = ['refunded', 'charged_back'].includes(String(payment.status || '').toLowerCase());
+  const allowedRefund = canRefundPaidOrder(existingOrder, payment);
+
+  async function repairPaidOrderIfNeeded(order) {
+    if (!needsFulfillmentRepair(order) && order.fulfillment_status !== 'cancelado') {
+      return order;
+    }
+    if (!isOrderPaid(order)) {
+      return order;
+    }
+    if (order.fulfillment_status === 'cancelado' && !allowedRefund) {
+      const repaired = await updateOrderById(order.id, {
+        ...buildOrderUpdatesFromFulfillment('pagamento_aprovado', order),
+        order_logs: appendOrderLog(order.order_logs, {
+          action: 'Proteção automática do pagamento',
+          message: `Pagamento preservado. Webhook MP "${payment.status}" (id ${payment.id}) não pode reverter pedido pago.`,
+          user: 'Sistema',
+        }),
+      });
+      console.log('[PaymentsService] Pedido pago reparado após webhook inválido', {
+        orderId: order.id,
+        orderNumber: order.order_number,
+      });
+      return repaired;
+    }
+    return order;
+  }
+
+  if (alreadyPaid && !paymentApproved && !allowedRefund) {
+    console.warn('[PaymentsService] BLOQUEADO: webhook não pode alterar pedido já pago', {
+      orderId: existingOrder.id,
+      orderNumber: existingOrder.order_number,
+      paymentId: payment.id,
+      paymentStatus: payment.status,
+      approvedPaymentId: existingOrder.mercado_pago_payment_id,
+    });
+    await repairPaidOrderIfNeeded(existingOrder);
+    if (!options.skipRaceGuard) processingWebhooks.delete(externalReference);
+    return {
+      ignored: true,
+      protected: true,
+      reason: 'Pedido já pago. Webhook ignorado para evitar cancelamento indevido.',
+    };
+  }
+
+  if (paymentApproved && alreadyPaid) {
+    await repairPaidOrderIfNeeded(existingOrder);
+    if (!options.skipRaceGuard) processingWebhooks.delete(externalReference);
+    return {
+      ignored: true,
+      alreadyPaid: true,
+      reason: 'Pedido já processado anteriormente.',
+    };
+  }
 
   const orderUpdates = {
     mercado_pago_payment_id: payment.id ? String(payment.id) : existingOrder.mercado_pago_payment_id,
@@ -201,28 +247,24 @@ async function applyMercadoPagoPaymentUpdate(payment, merchantOrder = null, opti
   if (paymentApproved) {
     orderUpdates.status = statusMap.orderStatus;
     orderUpdates.payment_status = statusMap.paymentStatus;
-    orderUpdates.paid_at = new Date().toISOString();
+    orderUpdates.paid_at = existingOrder.paid_at || new Date().toISOString();
     orderUpdates.fulfillment_status = 'pagamento_aprovado';
-  } else if (isCancelled && (!alreadyPaid || (sameApprovedPayment && hardRefund))) {
+  } else if (isCancelled && allowedRefund) {
     orderUpdates.status = statusMap.orderStatus;
     orderUpdates.payment_status = statusMap.paymentStatus;
     orderUpdates.fulfillment_status = 'cancelado';
-  } else if (isCancelled && alreadyPaid) {
-    console.warn('[PaymentsService] Ignorando cancelamento tardio em pedido já pago', {
-      orderId: existingOrder.id,
-      orderNumber: existingOrder.order_number,
-      paymentId: payment.id,
-      paymentStatus: payment.status,
-    });
-  } else {
+  } else if (!alreadyPaid) {
     orderUpdates.status = statusMap.orderStatus;
     orderUpdates.payment_status = statusMap.paymentStatus;
     orderUpdates.paid_at = existingOrder.paid_at;
+    if (isCancelled) {
+      orderUpdates.fulfillment_status = 'cancelado';
+    }
   }
 
   const updatedOrder = await updateOrderByExternalReference(existingOrder.external_reference, orderUpdates);
 
-  if (isCancelled && wasNotCancelled && (!alreadyPaid || (sameApprovedPayment && hardRefund))) {
+  if (isCancelled && wasNotCancelled && allowedRefund) {
     try {
       const orderWithItems = await getOrderWithItems(existingOrder.external_reference);
       await restoreStockForOrder(orderWithItems, orderWithItems.items || []);
