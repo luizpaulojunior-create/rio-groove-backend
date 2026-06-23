@@ -31,15 +31,7 @@ function parseJsonField(value, fallback) {
 
 function canViewMockup(order) {
   if (order.order_type === 'ready_art') return true;
-  if (order.art_payment_status === 'paid' || order.art_payment_status === 'not_required') return true;
-  return [
-    'mockup_ready',
-    'art_paid',
-    'awaiting_product_payment',
-    'in_production',
-    'shipped',
-    'completed',
-  ].includes(order.status);
+  return order.art_payment_status === 'paid' || order.art_payment_status === 'not_required';
 }
 
 function sanitizeOrderForCustomer(order, { includeFiles = true } = {}) {
@@ -477,7 +469,12 @@ async function approveCustomOrderForProduction(id, user) {
   assertCustomerOwnsOrder(order, user);
 
   if (order.order_type === 'exclusive_art') {
-    if (!['mockup_ready', 'art_paid'].includes(order.status)) {
+    if (order.art_payment_status !== 'paid') {
+      const err = new Error('Pague a taxa de arte antes de aprovar a peça.');
+      err.statusCode = 400;
+      throw err;
+    }
+    if (order.status !== 'art_paid') {
       const err = new Error('Mockup ainda não disponível para aprovação.');
       err.statusCode = 400;
       throw err;
@@ -521,7 +518,7 @@ async function startArtFeePayment(id, user, returnOrigin) {
     err.statusCode = 400;
     throw err;
   }
-  if (order.status !== 'mockup_ready' && order.status !== 'awaiting_product_payment') {
+  if (order.status !== 'mockup_ready') {
     const err = new Error('Mockup ainda não está pronto para pagamento.');
     err.statusCode = 400;
     throw err;
@@ -628,8 +625,8 @@ async function startPackagePayment(id, user, returnOrigin, paymentPayload = {}) 
     err.statusCode = 400;
     throw err;
   }
-  if (order.status !== 'awaiting_product_payment') {
-    const err = new Error('Aprove o mockup antes de pagar o pacote completo.');
+  if (order.status !== 'mockup_ready') {
+    const err = new Error('O pacote completo só pode ser pago quando o mockup estiver pronto.');
     err.statusCode = 400;
     throw err;
   }
