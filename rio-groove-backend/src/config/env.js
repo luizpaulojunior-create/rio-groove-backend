@@ -54,6 +54,9 @@ const env = {
   storeStateAbbr: process.env.STORE_STATE_ABBR || 'RJ',
   storePostalCode: process.env.STORE_POSTAL_CODE || process.env.MELHOR_ENVIO_ORIGIN_CEP || '22723019',
   oauthStateSecret: process.env.OAUTH_STATE_SECRET || '',
+  ga4MeasurementId: process.env.GA4_MEASUREMENT_ID || '',
+  ga4ApiSecret: process.env.GA4_API_SECRET || '',
+  ga4PropertyId: process.env.GA4_PROPERTY_ID || '',
 };
 
 const required = [

@@ -306,6 +306,16 @@ async function applyMercadoPagoPaymentUpdate(payment, merchantOrder = null, opti
       } catch (error) {
         console.error('[PaymentsService] Falha na baixa de estoque/cupom:', error.message);
       }
+
+      try {
+        const { ga4Measurement } = require('./ga4Measurement.service');
+        void ga4Measurement.sendPurchaseForApprovedPayment(payment, orderWithItems, {
+          source: 'mercadopago_webhook',
+          externalReference,
+        });
+      } catch (error) {
+        console.error('[PaymentsService] Falha ao enviar purchase GA4:', error.message);
+      }
     }
 
     const orderId = updatedOrder.id;

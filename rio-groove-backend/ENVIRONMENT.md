@@ -106,22 +106,31 @@ Verifica: `/api/health`, catálogo, imagem Supabase, pedido de referência, loja
 | `STORE_NAME`, `STORE_PHONE`, `STORE_EMAIL` | Dados da loja |
 | `STORE_DOCUMENT`, `STORE_ADDRESS`, etc. | Endereço fiscal |
 
-## Google Analytics 4 (opcional — funil no admin)
+## Google Analytics 4 (opcional — funil no admin + Measurement Protocol)
 
 | Variável | Descrição |
 |----------|-----------|
-| `GA4_PROPERTY_ID` | ID numérico da propriedade (ex: `539502234`) |
+| `GA4_PROPERTY_ID` | ID numérico da propriedade (ex: `539502234`) — **Data API** (funil admin) |
 | `GA4_MEASUREMENT_ID` | ID de medição da loja (ex: `G-2J23RT1MN3`) |
-| `GA4_SERVICE_ACCOUNT_JSON` | JSON da conta de serviço (texto ou base64) |
+| `GA4_API_SECRET` | Secret do **Measurement Protocol** (Admin → Fluxo de dados → seu stream → Measurement Protocol API secrets) |
+| `GA4_SERVICE_ACCOUNT_JSON` | JSON da conta de serviço (texto ou base64) — **Data API** |
+| `GA4_MP_DEBUG` | `true` envia para o endpoint de validação do Google (debug apenas) |
 | `GOOGLE_APPLICATION_CREDENTIALS` | Alternativa: caminho local ao arquivo JSON |
 
-**Setup Google Cloud**
+**Setup Google Cloud (funil admin / Data API)**
 
 1. Criar projeto no [Google Cloud Console](https://console.cloud.google.com/)
 2. Ativar **Google Analytics Data API**
 3. Criar **conta de serviço** → baixar JSON
 4. No GA4: **Admin → Gerenciamento de acesso à propriedade** → adicionar e-mail da conta de serviço com papel **Viewer**
 5. No Render: `GA4_PROPERTY_ID=539502234` e colar o JSON em `GA4_SERVICE_ACCOUNT_JSON` (recomendado em base64 no painel)
+
+**Setup Measurement Protocol (compras via webhook)**
+
+1. No GA4: **Admin → Fluxo de dados → Web** → seu stream da loja
+2. **Measurement Protocol API secrets** → criar secret
+3. No Render: `GA4_MEASUREMENT_ID=G-2J23RT1MN3` e `GA4_API_SECRET=<secret>`
+4. Rodar no Supabase o trecho `ga4_purchase_log` de `supabase.sql` (deduplicação server-side)
 
 Relatório local:
 

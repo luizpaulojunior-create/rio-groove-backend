@@ -730,6 +730,17 @@ async function applyCustomOrderPaymentUpdate(payment) {
     .single();
 
   if (error) throw new Error(error.message);
+
+  try {
+    const { ga4Measurement } = require('./ga4Measurement.service');
+    void ga4Measurement.sendPurchaseForCustomOrder(data, match.phase, {
+      source: 'mercadopago_webhook',
+      paymentId: payment?.id,
+    });
+  } catch (ga4Error) {
+    console.error('[CustomOrders] Falha ao enviar purchase GA4:', ga4Error.message);
+  }
+
   return { ignored: false, order: data, phase: match.phase };
 }
 
