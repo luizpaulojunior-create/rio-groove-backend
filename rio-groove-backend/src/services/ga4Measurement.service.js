@@ -1,14 +1,19 @@
 const crypto = require('crypto');
-const { supabase } = require('../lib/supabase');
 const { parseCustomPaymentRef } = require('./customOrdersPayment.service');
 const { getProductPaymentTotal, getPackagePaymentTotal } = require('../config/customPricing');
+const { validatePurchasePayload } = require('../analytics/purchaseValidation');
+const { resolvePurchaseConsent } = require('../analytics/consent');
+const { resolveGaClientId } = require('../analytics/ga4ClientId');
+const purchaseLog = require('../analytics/purchaseLog.repository');
+const { registerProvider } = require('../analytics/providers');
 
 const LOG_PREFIX = '[GA4-MP]';
 const MP_COLLECT_URL = 'https://www.google-analytics.com/mp/collect';
 const MP_DEBUG_URL = 'https://www.google-analytics.com/debug/mp/collect';
+const RETRY_DELAYS_MS = [5_000, 30_000, 300_000];
 
-/** @type {Set<string>} */
-const memoryDedup = new Set();
+/** @type {Map<string, ReturnType<typeof setTimeout>>} */
+const scheduledRetries = new Map();
 
 function getMeasurementId() {
   return String(process.env.GA4_MEASUREMENT_ID || '').trim();
@@ -24,6 +29,24 @@ function isGa4MeasurementConfigured() {
 
 function buildPurchaseEventId(transactionId) {
   return `purchase-${String(transactionId || '').trim()}`;
+}
+
+function resolveMeasurementClientId({ purchase, order, payment, kind, transactionId }) {
+  const fromPurchase = normalizeGaClientIdFromValue(purchase?.ga_client_id);
+  if (fromPurchase) return { clientId: fromPurchase, source: 'browser' };
+
+  const fromContext = resolveGaClientId({ order, payment, kind });
+  if (fromContext) return { clientId: fromContext, source: 'browser' };
+
+  return {
+    clientId: buildServerClientId(purchase?.client_id_seed || transactionId),
+    source: 'derived',
+  };
+}
+
+function normalizeGaClientIdFromValue(value) {
+  const text = String(value || '').trim();
+  return /^\d+\.\d+$/.test(text) ? text : null;
 }
 
 function buildServerClientId(seed) {
@@ -64,65 +87,74 @@ function buildPurchaseParams(purchase) {
   return { params, eventId };
 }
 
-async function claimDedupKey(dedupKey) {
-  const key = String(dedupKey || '').trim();
-  if (!key) {
-    return { claimed: false, reason: 'missing_dedup_key' };
-  }
-
-  if (memoryDedup.has(key)) {
-    return { claimed: false, reason: 'memory_duplicate' };
-  }
-
-  try {
-    const { error } = await supabase
-      .from('ga4_purchase_log')
-      .insert({
-        dedup_key: key,
-        transaction_id: key,
-        source: 'measurement_protocol',
-      });
-
-    if (error) {
-      if (error.code === '23505') {
-        return { claimed: false, reason: 'db_duplicate' };
-      }
-      if (error.code === '42P01') {
-        memoryDedup.add(key);
-        return { claimed: true, reason: 'memory_fallback_no_table' };
-      }
-      console.warn(`${LOG_PREFIX} Falha ao registrar deduplicação — usando cache em memória`, error.message);
-      memoryDedup.add(key);
-      return { claimed: true, reason: 'memory_fallback_db_error' };
-    }
-
-    memoryDedup.add(key);
-    return { claimed: true, reason: 'db_claimed' };
-  } catch (error) {
-    console.warn(`${LOG_PREFIX} Erro inesperado na deduplicação — usando cache em memória`, error.message);
-    memoryDedup.add(key);
-    return { claimed: true, reason: 'memory_fallback_exception' };
-  }
+function isRetryableHttpStatus(status) {
+  return status === 500 || status === 502 || status === 503 || status === 504;
 }
 
-async function postToMeasurementProtocol(body, { debug = false } = {}) {
+function isRetryableError(error) {
+  if (!error) return false;
+  const code = String(error.code || '').toUpperCase();
+  if (code === 'ETIMEDOUT' || code === 'ECONNRESET' || code === 'ECONNABORTED' || code === 'ENOTFOUND') {
+    return true;
+  }
+  const message = String(error.message || '').toLowerCase();
+  return message.includes('timeout') || message.includes('network') || message.includes('fetch failed');
+}
+
+function logStructured(entry) {
+  console.log(LOG_PREFIX, {
+    timestamp: new Date().toISOString(),
+    ...entry,
+  });
+}
+
+function logStructuredError(entry) {
+  console.error(LOG_PREFIX, {
+    timestamp: new Date().toISOString(),
+    ...entry,
+  });
+}
+
+async function postToMeasurementProtocol(body, { debug = false, timeoutMs = 12_000 } = {}) {
   const measurementId = getMeasurementId();
   const apiSecret = getApiSecret();
   const baseUrl = debug ? MP_DEBUG_URL : MP_COLLECT_URL;
   const url = `${baseUrl}?measurement_id=${encodeURIComponent(measurementId)}&api_secret=${encodeURIComponent(apiSecret)}`;
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const started = Date.now();
 
-  if (debug) {
-    const debugPayload = await response.json().catch(() => ({}));
-    return { ok: response.ok, status: response.status, debugPayload };
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    const latencyMs = Date.now() - started;
+    let responseBody = null;
+    if (debug) {
+      responseBody = await response.json().catch(() => ({}));
+    }
+
+    return {
+      ok: response.ok,
+      status: response.status,
+      latencyMs,
+      responseBody,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 0,
+      latencyMs: Date.now() - started,
+      error,
+    };
+  } finally {
+    clearTimeout(timer);
   }
-
-  return { ok: response.ok, status: response.status };
 }
 
 function resolveStoreOrderCoupon(order) {
@@ -266,118 +298,276 @@ function buildPurchaseFromPayment(payment, orderWithItems) {
   return buildPurchaseFromStoreOrder(orderWithItems);
 }
 
+/** Referência tardia para evitar circularidade no agendamento de retry. */
+let executePurchaseSend = null;
+
+function scheduleRetry(job, delayMs) {
+  if (scheduledRetries.has(job.dedupKey)) return;
+  const timer = setTimeout(() => {
+    scheduledRetries.delete(job.dedupKey);
+    if (executePurchaseSend) {
+      void executePurchaseSend(job);
+    }
+  }, delayMs);
+  scheduledRetries.set(job.dedupKey, timer);
+}
+
 class Ga4MeasurementService {
   isConfigured() {
     return isGa4MeasurementConfigured();
   }
 
-  /**
-   * Envia evento purchase via Measurement Protocol.
-   * @returns {'sent'|'duplicate'|'ignored'|'error'}
-   */
-  async sendPurchase(purchase, context = {}) {
-    const transactionId = String(purchase?.transaction_id || '').trim();
+  async _executeSend(job) {
+    const {
+      purchase,
+      context = {},
+      attempt = 1,
+      analyticsConsent = null,
+      order = null,
+      payment = null,
+      kind = 'store',
+    } = job;
 
-    if (!transactionId) {
-      console.log(`${LOG_PREFIX} purchase ignorado — transaction_id ausente`, context);
-      return { status: 'ignored', reason: 'missing_transaction_id' };
+    const validation = validatePurchasePayload(purchase);
+    const transactionId = validation.transactionId;
+    const eventId = purchase.event_id || buildPurchaseEventId(transactionId);
+
+    if (!validation.valid) {
+      await purchaseLog.markIgnored({
+        dedupKey: transactionId,
+        transactionId,
+        status: 'invalid',
+        reason: validation.errors.join('; '),
+        analyticsConsent,
+      });
+      logStructured({
+        status: 'invalid',
+        transaction_id: transactionId,
+        event_id: eventId,
+        attempt,
+        reasons: validation.errors,
+        ...context,
+      });
+      return { status: 'invalid', reason: validation.errors.join('; ') };
     }
 
     if (!isGa4MeasurementConfigured()) {
-      console.log(`${LOG_PREFIX} purchase ignorado — GA4_MEASUREMENT_ID ou GA4_API_SECRET não configurados`, {
-        transactionId,
+      logStructured({
+        status: 'ignored',
+        reason: 'not_configured',
+        transaction_id: transactionId,
+        event_id: eventId,
+        attempt,
         ...context,
       });
       return { status: 'ignored', reason: 'not_configured' };
     }
 
-    const dedup = await claimDedupKey(transactionId);
-    if (!dedup.claimed) {
-      console.log(`${LOG_PREFIX} purchase duplicado — não reenviado`, {
+    const consent = analyticsConsent === true
+      ? true
+      : resolvePurchaseConsent({ order, payment, kind });
+    if (consent !== true) {
+      await purchaseLog.markIgnored({
+        dedupKey: transactionId,
         transactionId,
-        dedupReason: dedup.reason,
+        status: 'consent_denied',
+        reason: 'analytics_consent_not_granted',
+        analyticsConsent: consent,
+      });
+      logStructured({
+        status: 'consent_denied',
+        transaction_id: transactionId,
+        event_id: eventId,
+        attempt,
+        consent,
         ...context,
       });
-      return { status: 'duplicate', reason: dedup.reason };
+      return { status: 'ignored', reason: 'consent_denied' };
     }
 
-    const { params, eventId } = buildPurchaseParams(purchase);
-    const clientId = buildServerClientId(purchase.client_id_seed || transactionId);
+    const slot = await purchaseLog.beginSendAttempt({
+      dedupKey: transactionId,
+      transactionId,
+      eventId,
+      analyticsConsent: true,
+      payload: purchase,
+    });
 
+    if (slot.action === 'duplicate') {
+      logStructured({
+        status: 'duplicate',
+        transaction_id: transactionId,
+        event_id: eventId,
+        attempt,
+        ...context,
+      });
+      return { status: 'duplicate', reason: 'already_sent' };
+    }
+
+    if (slot.action === 'failed_final' || slot.action === 'blocked') {
+      logStructured({
+        status: slot.action,
+        transaction_id: transactionId,
+        event_id: eventId,
+        attempt: slot.existing?.attempts,
+        ...context,
+      });
+      return { status: 'ignored', reason: slot.action };
+    }
+
+    const currentAttempt = slot.attempts || attempt;
+    const { params } = buildPurchaseParams(purchase);
+    const purchaseKind = context.kind || kind;
+    const { clientId, source: clientIdSource } = resolveMeasurementClientId({
+      purchase,
+      order,
+      payment,
+      kind: purchaseKind,
+      transactionId,
+    });
     const body = {
       client_id: clientId,
-      events: [{
-        name: 'purchase',
-        params,
-      }],
+      events: [{ name: 'purchase', params: { ...params, event_id: eventId } }],
     };
 
-    try {
-      const useDebug = process.env.GA4_MP_DEBUG === 'true';
-      const result = await postToMeasurementProtocol(body, { debug: useDebug });
+    const useDebug = process.env.GA4_MP_DEBUG === 'true';
+    const result = await postToMeasurementProtocol(body, { debug: useDebug });
 
-      if (!result.ok) {
-        memoryDedup.delete(transactionId);
-        try {
-          await supabase.from('ga4_purchase_log').delete().eq('dedup_key', transactionId);
-        } catch {
-          /* best effort rollback */
-        }
-        console.error(`${LOG_PREFIX} erro ao enviar purchase`, {
-          transactionId,
-          status: result.status,
-          debugPayload: result.debugPayload,
-          ...context,
-        });
-        return { status: 'error', reason: `http_${result.status}` };
-      }
-
-      if (useDebug && result.debugPayload) {
-        console.log(`${LOG_PREFIX} debug response`, result.debugPayload);
-      }
-
-      console.log(`${LOG_PREFIX} purchase enviado`, {
+    if (result.ok) {
+      await purchaseLog.markSent({
+        dedupKey: transactionId,
         transactionId,
         eventId,
+        httpStatus: result.status,
+        responseBody: result.responseBody,
+        latencyMs: result.latencyMs,
+      });
+      logStructured({
+        status: 'sent',
+        transaction_id: transactionId,
+        event_id: eventId,
+        attempt: currentAttempt,
+        latency_ms: result.latencyMs,
+        http_status: result.status,
+        client_id_source: clientIdSource,
         value: params.value,
         currency: params.currency,
-        itemCount: params.items?.length || 0,
-        dedupReason: dedup.reason,
+        item_count: params.items?.length || 0,
         ...context,
       });
-      return { status: 'sent', transactionId, eventId };
-    } catch (error) {
-      memoryDedup.delete(transactionId);
-      try {
-        await supabase.from('ga4_purchase_log').delete().eq('dedup_key', transactionId);
-      } catch {
-        /* best effort rollback */
-      }
-      console.error(`${LOG_PREFIX} erro ao enviar purchase`, {
-        transactionId,
-        message: error.message,
-        ...context,
-      });
-      return { status: 'error', reason: error.message };
+      return { status: 'sent', transactionId, eventId, attempt: currentAttempt };
     }
+
+    const retryable = result.status === 0
+      ? isRetryableError(result.error)
+      : isRetryableHttpStatus(result.status);
+
+    if (retryable && currentAttempt < purchaseLog.MAX_ATTEMPTS) {
+      const delayMs = RETRY_DELAYS_MS[Math.min(currentAttempt - 1, RETRY_DELAYS_MS.length - 1)];
+      await purchaseLog.markRetryScheduled({
+        dedupKey: transactionId,
+        transactionId,
+        eventId,
+        attempts: currentAttempt,
+        httpStatus: result.status || null,
+        responseBody: result.responseBody,
+        errorMessage: result.error?.message || `http_${result.status}`,
+        latencyMs: result.latencyMs,
+      });
+      logStructured({
+        status: 'retry_scheduled',
+        transaction_id: transactionId,
+        event_id: eventId,
+        attempt: currentAttempt,
+        next_delay_ms: delayMs,
+        latency_ms: result.latencyMs,
+        http_status: result.status || 0,
+        error: result.error?.message,
+        ...context,
+      });
+      scheduleRetry({
+        purchase,
+        context,
+        attempt: currentAttempt + 1,
+        analyticsConsent: true,
+        order,
+        payment,
+        kind,
+        dedupKey: transactionId,
+      }, delayMs);
+      return {
+        status: 'retry_scheduled',
+        transactionId,
+        eventId,
+        attempt: currentAttempt,
+        nextDelayMs: delayMs,
+      };
+    }
+
+    await purchaseLog.markFailed({
+      dedupKey: transactionId,
+      transactionId,
+      eventId,
+      attempts: currentAttempt,
+      httpStatus: result.status || null,
+      responseBody: result.responseBody,
+      errorMessage: result.error?.message || `http_${result.status}`,
+      latencyMs: result.latencyMs,
+    });
+    logStructuredError({
+      status: 'failed',
+      transaction_id: transactionId,
+      event_id: eventId,
+      attempt: currentAttempt,
+      latency_ms: result.latencyMs,
+      http_status: result.status || 0,
+      response_body: result.responseBody,
+      error: result.error?.message,
+      ...context,
+    });
+    return { status: 'error', reason: result.error?.message || `http_${result.status}` };
+  }
+
+  async sendPurchase(purchase, context = {}) {
+    return this._executeSend({
+      purchase,
+      context,
+      attempt: 1,
+      analyticsConsent: context.analyticsConsent,
+      order: context.order,
+      payment: context.payment,
+      kind: context.kind || 'store',
+      dedupKey: String(purchase?.transaction_id || '').trim(),
+    });
   }
 
   async sendPurchaseForStoreOrder(order, context = {}) {
     const purchase = buildPurchaseFromStoreOrder(order);
     if (!purchase) {
-      console.log(`${LOG_PREFIX} purchase ignorado — pedido inválido`, context);
+      logStructured({ status: 'ignored', reason: 'invalid_order', ...context });
       return { status: 'ignored', reason: 'invalid_order' };
     }
-    return this.sendPurchase(purchase, { kind: 'store', orderId: order.id, ...context });
+    return this.sendPurchase(purchase, {
+      kind: 'store',
+      orderId: order.id,
+      order,
+      ...context,
+    });
   }
 
   async sendPurchaseForCustomOrder(order, phase, context = {}) {
     const purchase = buildPurchaseFromCustomOrder(order, phase);
     if (!purchase) {
-      console.log(`${LOG_PREFIX} purchase ignorado — pedido personalizado inválido`, { phase, ...context });
+      logStructured({ status: 'ignored', reason: 'invalid_custom_order', phase, ...context });
       return { status: 'ignored', reason: 'invalid_custom_order' };
     }
-    return this.sendPurchase(purchase, { kind: 'custom', orderId: order.id, phase, ...context });
+    return this.sendPurchase(purchase, {
+      kind: 'custom',
+      orderId: order.id,
+      phase,
+      order,
+      ...context,
+    });
   }
 
   async sendPurchaseForApprovedPayment(payment, orderWithItems, context = {}) {
@@ -392,6 +582,7 @@ class Ga4MeasurementService {
       return this.sendPurchaseForCustomOrder(orderWithItems, customRef.phase, {
         source: 'webhook',
         paymentId: payment?.id,
+        payment,
         ...context,
       });
     }
@@ -399,12 +590,20 @@ class Ga4MeasurementService {
     return this.sendPurchaseForStoreOrder(orderWithItems, {
       source: 'webhook',
       paymentId: payment?.id,
+      payment,
       ...context,
     });
   }
 }
 
 const ga4Measurement = new Ga4MeasurementService();
+executePurchaseSend = (job) => ga4Measurement._executeSend(job);
+
+registerProvider({
+  id: 'ga4',
+  isConfigured: () => ga4Measurement.isConfigured(),
+  sendPurchase: (purchase, context) => ga4Measurement.sendPurchase(purchase, context),
+});
 
 module.exports = {
   ga4Measurement,

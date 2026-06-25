@@ -308,13 +308,17 @@ async function applyMercadoPagoPaymentUpdate(payment, merchantOrder = null, opti
       }
 
       try {
-        const { ga4Measurement } = require('./ga4Measurement.service');
-        void ga4Measurement.sendPurchaseForApprovedPayment(payment, orderWithItems, {
-          source: 'mercadopago_webhook',
-          externalReference,
+        const { enqueueStoreOrderPurchase } = require('../analytics/serverAnalytics.service');
+        enqueueStoreOrderPurchase({
+          payment,
+          order: orderWithItems,
+          context: {
+            source: 'mercadopago_webhook',
+            externalReference,
+          },
         });
       } catch (error) {
-        console.error('[PaymentsService] Falha ao enviar purchase GA4:', error.message);
+        console.error('[PaymentsService] Falha ao enfileirar purchase GA4:', error.message);
       }
     }
 

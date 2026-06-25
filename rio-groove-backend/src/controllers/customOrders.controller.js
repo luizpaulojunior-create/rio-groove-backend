@@ -148,6 +148,7 @@ async function payArtFee(req, res, next) {
       req.params.id,
       req.user,
       req.body?.return_origin || req.headers.origin,
+      { analytics_consent: req.body?.analytics_consent, ga_client_id: req.body?.ga_client_id },
     );
     res.json(payment);
   } catch (err) {
@@ -168,6 +169,8 @@ async function payProduct(req, res, next) {
         shipping: req.body?.shipping,
         pickup_acknowledged: req.body?.pickup_acknowledged,
         cep: req.body?.cep,
+        analytics_consent: req.body?.analytics_consent,
+        ga_client_id: req.body?.ga_client_id,
       },
     );
     res.json(payment);
@@ -189,6 +192,8 @@ async function payPackage(req, res, next) {
         shipping: req.body?.shipping,
         pickup_acknowledged: req.body?.pickup_acknowledged,
         cep: req.body?.cep,
+        analytics_consent: req.body?.analytics_consent,
+        ga_client_id: req.body?.ga_client_id,
       },
     );
     res.json(payment);

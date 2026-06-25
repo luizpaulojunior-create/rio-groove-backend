@@ -504,7 +504,7 @@ async function approveCustomOrderForProduction(id, user) {
   return getCustomOrderForCustomer(id, user);
 }
 
-async function startArtFeePayment(id, user, returnOrigin) {
+async function startArtFeePayment(id, user, returnOrigin, paymentPayload = {}) {
   const order = await getCustomOrderById(id);
   assertCustomerOwnsOrder(order, user);
 
@@ -528,6 +528,8 @@ async function startArtFeePayment(id, user, returnOrigin) {
     order,
     phase: 'art',
     returnOrigin,
+    analyticsConsent: paymentPayload.analytics_consent,
+    gaClientId: paymentPayload.ga_client_id,
   });
 
   await supabase
@@ -593,6 +595,8 @@ async function startProductPayment(id, user, returnOrigin, paymentPayload = {}) 
     order: freshOrder,
     phase: 'product',
     returnOrigin,
+    analyticsConsent: paymentPayload.analytics_consent,
+    gaClientId: paymentPayload.ga_client_id,
   });
 
   await supabase
@@ -657,6 +661,8 @@ async function startPackagePayment(id, user, returnOrigin, paymentPayload = {}) 
     order: freshOrder,
     phase: 'package',
     returnOrigin,
+    analyticsConsent: paymentPayload.analytics_consent,
+    gaClientId: paymentPayload.ga_client_id,
   });
 
   await supabase
@@ -732,13 +738,18 @@ async function applyCustomOrderPaymentUpdate(payment) {
   if (error) throw new Error(error.message);
 
   try {
-    const { ga4Measurement } = require('./ga4Measurement.service');
-    void ga4Measurement.sendPurchaseForCustomOrder(data, match.phase, {
-      source: 'mercadopago_webhook',
-      paymentId: payment?.id,
+    const { enqueueCustomOrderPurchase } = require('../analytics/serverAnalytics.service');
+    enqueueCustomOrderPurchase({
+      payment,
+      order: data,
+      phase: match.phase,
+      context: {
+        source: 'mercadopago_webhook',
+        paymentId: payment?.id,
+      },
     });
   } catch (ga4Error) {
-    console.error('[CustomOrders] Falha ao enviar purchase GA4:', ga4Error.message);
+    console.error('[CustomOrders] Falha ao enfileirar purchase GA4:', ga4Error.message);
   }
 
   return { ignored: false, order: data, phase: match.phase };

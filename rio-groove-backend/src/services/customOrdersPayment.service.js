@@ -19,7 +19,7 @@ function parseCustomPaymentRef(externalReference) {
   return null;
 }
 
-async function createCustomOrderPaymentPreference({ order, phase, returnOrigin }) {
+async function createCustomOrderPaymentPreference({ order, phase, returnOrigin, analyticsConsent = null, gaClientId = null }) {
   const isArt = phase === 'art';
   const isPackage = phase === 'package';
   const amount = isArt
@@ -70,6 +70,9 @@ async function createCustomOrderPaymentPreference({ order, phase, returnOrigin }
       custom_order_id: order.id,
       custom_order_protocol: order.protocol,
       payment_phase: phase,
+      ...(analyticsConsent === true ? { analytics_consent: true } : {}),
+      ...(analyticsConsent === false ? { analytics_consent: false } : {}),
+      ...(gaClientId ? { ga_client_id: String(gaClientId) } : {}),
     },
   };
 

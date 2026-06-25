@@ -130,7 +130,42 @@ Verifica: `/api/health`, catálogo, imagem Supabase, pedido de referência, loja
 1. No GA4: **Admin → Fluxo de dados → Web** → seu stream da loja
 2. **Measurement Protocol API secrets** → criar secret
 3. No Render: `GA4_MEASUREMENT_ID=G-2J23RT1MN3` e `GA4_API_SECRET=<secret>`
-4. Rodar no Supabase o trecho `ga4_purchase_log` de `supabase.sql` (deduplicação server-side)
+4. Rodar no Supabase:
+   - Tabela nova: trecho `ga4_purchase_log` em `supabase.sql`
+   - Upgrade de tabela existente: `migrations/ga4_purchase_log_upgrade.sql`
+
+### Arquitetura server-side + client-side (produção)
+
+```
+Mercado Pago webhook (pagamento aprovado, 1ª vez)
+  → payments.service / customOrders.service
+  → serverAnalytics.service (fila assíncrona, setImmediate)
+  → ga4Measurement.service (Measurement Protocol)
+  → ga4_purchase_log (deduplicação + retry)
+
+Cliente (/success ou pedido personalizado reconciliado)
+  → analytics.trackPurchase() via gtag
+  → sessionStorage (claimBrowserPurchase)
+  → mesmo transaction_id + event_id (purchase-{id})
+```
+
+| Camada | Responsabilidade |
+|--------|------------------|
+| **Browser** | Atribuição, DebugView, funil (`view_item` … `purchase`) |
+| **Backend MP** | Garantir `purchase` de vendas aprovadas (fonte confiável) |
+| **ga4_purchase_log** | Dedup server-side, status, tentativas, resposta HTTP |
+| **analytics.service.js** | Dashboard interno admin (Data API) — **não** Measurement Protocol |
+| **providers/** | Abstração para futuros provedores (Meta CAPI, TikTok, etc.) |
+
+**Consentimento (LGPD):** o MP **não** contorna cookies. O checkout envia `metadata.analytics_consent` (`granted`/`denied` do `localStorage`). O servidor só envia se o valor for explicitamente `true` (payment metadata ou `raw_checkout_payload.metadata`).
+
+**Retry:** falhas retryáveis (timeout, 500/502/503/504) → 5s → 30s → 5min; máx. 3 tentativas; sem duplicar `sent`.
+
+**Webhook:** nunca bloqueia no Google — envio enfileirado após confirmação oficial (`!paid_at` em pedidos normais).
+
+**Logs:** prefixo `[GA4-MP]` com `transaction_id`, `event_id`, `status`, `attempt`, `latency_ms`, `http_status`, `client_id_source` (`browser` | `derived`).
+
+**Client ID (atribuição):** o checkout e pagamentos personalizados enviam `metadata.ga_client_id` capturado do cookie `_ga` / `gtag('get', …, 'client_id')` quando o usuário concedeu consentimento. O Measurement Protocol reutiliza esse ID para unir a compra server-side à sessão do navegador. Fallback derivado (hash) só quando o ID real não estiver disponível.
 
 Relatório local:
 
