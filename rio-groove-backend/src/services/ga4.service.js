@@ -279,6 +279,10 @@ async function fetchTopProducts(client, property, dateRange, limit = 10) {
     .filter(Boolean);
 }
 
+function getServiceAccountEmail() {
+  return parseServiceAccountCredentials()?.client_email || null;
+}
+
 async function getConversionReport(period = '7d') {
   const dateRange = periodToDateRange(period);
   const meta = defaultPropertyMeta();
@@ -335,12 +339,14 @@ async function getConversionReport(period = '7d') {
     });
   } catch (error) {
     console.error('[GA4] Erro ao consultar Data API:', error.message);
+    const serviceAccountEmail = getServiceAccountEmail();
     const hint = /permission|denied|403|401/i.test(String(error.message))
-      ? ' Adicione o e-mail da conta de serviço como Viewer em GA4 → Admin → Gerenciamento de acesso à propriedade.'
+      ? ` Adicione${serviceAccountEmail ? ` o e-mail ${serviceAccountEmail}` : ' o e-mail da conta de serviço'} como Viewer em GA4 → Admin → Gerenciamento de acesso à propriedade (ID ${meta.propertyId}).`
       : '';
     return {
       configured: true,
       fetchError: `${error.message || 'Erro ao consultar Google Analytics Data API'}.${hint}`,
+      serviceAccountEmail,
       ...emptyConversionPayload(dateRange),
     };
   }
