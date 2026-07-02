@@ -87,6 +87,9 @@ Verifica: `/api/health`, catálogo, imagem Supabase, pedido de referência, loja
 | `MELHOR_ENVIO_CLIENT_ID` | OAuth |
 | `MELHOR_ENVIO_CLIENT_SECRET` | OAuth |
 | `MELHOR_ENVIO_REDIRECT_URI` | OAuth callback |
+| `MELHOR_ENVIO_INVOICE_KEY` | Chave NF-e (44 dígitos) para envio comercial CNPJ (J&T) |
+| `MELHOR_ENVIO_MIN_INSURANCE_VALUE` | Valor segurado mínimo (padrão `5`) |
+| `MELHOR_ENVIO_REQUIRE_INVOICE_FOR_CNPJ` | `true` bloqueia etiqueta sem NF quando remetente é CNPJ |
 
 ## Notificações
 

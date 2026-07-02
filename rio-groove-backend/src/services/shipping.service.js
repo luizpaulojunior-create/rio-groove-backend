@@ -20,6 +20,151 @@ const EXPRESS_NAME_PATTERNS = [
   /urgente/i
 ];
 
+function getMinInsuranceValue() {
+  const configured = Number(env.melhorEnvioMinInsuranceValue);
+  return Number.isFinite(configured) && configured > 0 ? configured : 5;
+}
+
+function isValidCnpj(value) {
+  const digits = onlyDigits(value);
+  return digits.length === 14 && !/^0+$/.test(digits);
+}
+
+function isValidCpf(value) {
+  const digits = onlyDigits(value);
+  return digits.length === 11 && !/^0+$/.test(digits);
+}
+
+function normalizeInsuranceValue(value) {
+  const minValue = getMinInsuranceValue();
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) return minValue;
+  return Math.max(Number(num.toFixed(2)), minValue);
+}
+
+function computeDeclaredGoodsValue(order) {
+  const items = order?.items || [];
+  let fromItems = 0;
+  for (const item of items) {
+    fromItems += (Number(item.unit_price) || 0) * (Number(item.quantity) || 1);
+  }
+
+  const subtotal = Number(order.subtotal_amount ?? order.subtotal ?? 0);
+  const fallback = Number(order.total_amount ?? order.total ?? 0);
+  const base = fromItems > 0 ? fromItems : (subtotal > 0 ? subtotal : fallback);
+  return normalizeInsuranceValue(base);
+}
+
+function resolveOrderInvoiceKey(order) {
+  const raw = order?.raw_checkout_payload || {};
+  const meta = raw.metadata || order?.metadata_json || {};
+  const key =
+    meta.invoice_key ||
+    meta.nfe_key ||
+    meta.nf_key ||
+    raw.invoice_key ||
+    env.melhorEnvioInvoiceKey ||
+    '';
+  const digits = onlyDigits(key);
+  return digits.length === 44 ? digits : '';
+}
+
+function buildMelhorEnvioFromAddress({ commercial = false } = {}) {
+  const cpf = onlyDigits(env.storeDocument);
+  const cnpj = onlyDigits(env.storeCompanyDocument);
+  const senderDocument = isValidCpf(cpf)
+    ? cpf
+    : (commercial && isValidCnpj(cnpj) ? cnpj : cpf);
+
+  const from = {
+    name: env.storeName,
+    phone: onlyDigits(env.storePhone),
+    email: env.storeEmail,
+    document: senderDocument,
+    state_register: env.storeStateRegister,
+    address: env.storeAddress,
+    complement: env.storeComplement,
+    number: env.storeNumber,
+    district: env.storeDistrict,
+    city: env.storeCity,
+    country_id: 'BR',
+    postal_code: onlyDigits(env.storePostalCode),
+    note: '',
+    state_abbr: env.storeStateAbbr,
+  };
+
+  if (commercial && isValidCnpj(cnpj)) {
+    from.company_document = cnpj;
+  }
+
+  return from;
+}
+
+function buildMelhorEnvioCartOptions(order, insuranceValue) {
+  const invoiceKey = resolveOrderInvoiceKey(order);
+  const senderHasCnpj = isValidCnpj(env.storeCompanyDocument);
+
+  const base = {
+    insurance_value: insuranceValue,
+    receipt: false,
+    own_hand: false,
+    reverse_manage: false,
+  };
+
+  if (invoiceKey) {
+    return {
+      ...base,
+      non_commercial: false,
+      invoice: { key: invoiceKey },
+      _commercialSender: true,
+    };
+  }
+
+  if (senderHasCnpj && env.melhorEnvioRequireInvoiceForCnpj) {
+    throw new Error(
+      'Envios com remetente CNPJ exigem chave de NF-e no Melhor Envio (regra J&T). ' +
+      'Configure MELHOR_ENVIO_INVOICE_KEY no Render ou informe invoice_key no pedido.',
+    );
+  }
+
+  return {
+    ...base,
+    non_commercial: true,
+    _commercialSender: false,
+  };
+}
+
+function enrichMelhorEnvioErrorMessage(status, message) {
+  const text = String(message || '').toLowerCase();
+  if (status !== 422) return message;
+
+  if (
+    text.includes('insurance') ||
+    text.includes('segur') ||
+    text.includes('valor segurado') ||
+    text.includes('valor mínimo') ||
+    text.includes('valor minimo')
+  ) {
+    return `${message} A J&T exige valor segurado mínimo de R$ ${getMinInsuranceValue().toFixed(2)}.`;
+  }
+
+  if (
+    text.includes('non_commercial') ||
+    text.includes('não comercial') ||
+    text.includes('nao comercial') ||
+    text.includes('declara') ||
+    text.includes('nota fiscal') ||
+    text.includes('cnpj')
+  ) {
+    return (
+      `${message} Remetente CNPJ não pode usar declaração de conteúdo na J&T. ` +
+      'Emita NF-e e configure MELHOR_ENVIO_INVOICE_KEY no Render, ou use CPF do responsável no remetente.'
+    );
+  }
+
+  return message;
+}
+
 function formatDeliveryTime(option) {
   const days =
     parseInt(String(option.custom_delivery_time), 10)
@@ -201,9 +346,12 @@ async function getShippingQuote({ cep, weight, height, width, length }) {
         height: Number(height) || 5,
         length: Number(length) || 25,
         quantity: 1,
-        insurance_value: 0
+        insurance_value: getMinInsuranceValue()
       }
-    ]
+    ],
+    options: {
+      insurance_value: getMinInsuranceValue()
+    }
   };
 
   console.log('[MelhorEnvio] Payload enviado', JSON.stringify(requestBody, null, 2));
@@ -237,9 +385,8 @@ async function getShippingQuote({ cep, weight, height, width, length }) {
 
     if (!response.ok) {
       const responseText = await response.text();
-      const message = `Melhor Envio retornou ${response.status}: ${responseText}`;
-      console.error('[MelhorEnvio] API retornou erro', message);
-      throw new Error(message);
+      console.error('[MelhorEnvio] API retornou erro', response.status, responseText);
+      throw formatMelhorEnvioHttpError(response.status, responseText);
     }
 
     const payload = await response.json();
@@ -298,7 +445,7 @@ async function ensureShippingRequestBody(order, shipmentId) {
       height: Number(metadata.height || metadata.altura || 5),
       length: Number(metadata.length || metadata.comprimento || 25),
       quantity: Number(item.quantity) || 1,
-      insurance_value: 0
+      insurance_value: getMinInsuranceValue()
     };
   });
 
@@ -408,9 +555,18 @@ function formatMelhorEnvioHttpError(status, bodyText) {
 
   try {
     const json = JSON.parse(text);
-    return new Error(json.message || `Melhor Envio retornou ${status}.`);
+    const fieldErrors = json.errors && typeof json.errors === 'object'
+      ? Object.entries(json.errors).flatMap(([field, messages]) => {
+        const list = Array.isArray(messages) ? messages : [messages];
+        return list.map((entry) => `${field}: ${entry}`);
+      })
+      : [];
+    const baseMessage = fieldErrors.length
+      ? fieldErrors.join(' ')
+      : (json.message || json.error || `Melhor Envio retornou ${status}.`);
+    return new Error(enrichMelhorEnvioErrorMessage(status, baseMessage));
   } catch {
-    return new Error(`Melhor Envio retornou ${status}: ${text.slice(0, 240)}`);
+    return new Error(enrichMelhorEnvioErrorMessage(status, `Melhor Envio retornou ${status}: ${text.slice(0, 240)}`));
   }
 }
 
@@ -788,31 +944,14 @@ async function createShipmentInCart(order, serviceId) {
     throw new Error(`ID de serviço (serviceId) inválido: ${serviceId}`);
   }
 
-  const insuranceValue = Math.max(
-    Number(order.total_amount || order.total || 1),
-    1
-  );
-  console.log('[MelhorEnvio] insurance_value final:', insuranceValue);
+  const cartOptions = buildMelhorEnvioCartOptions(order, computeDeclaredGoodsValue(order));
+  const { _commercialSender, ...options } = cartOptions;
+  const insuranceValue = options.insurance_value;
+  console.log('[MelhorEnvio] insurance_value final:', insuranceValue, '| commercial:', _commercialSender);
 
   const requestBody = {
     service: parsedServiceId,
-    from: {
-      name: env.storeName,
-      phone: String(env.storePhone).replace(/\D/g, ''),
-      email: env.storeEmail,
-      document: String(env.storeDocument).replace(/\D/g, ''),
-      company_document: String(env.storeCompanyDocument).replace(/\D/g, ''),
-      state_register: env.storeStateRegister,
-      address: env.storeAddress,
-      complement: env.storeComplement,
-      number: env.storeNumber,
-      district: env.storeDistrict,
-      city: env.storeCity,
-      country_id: 'BR',
-      postal_code: String(env.storePostalCode).replace(/\D/g, ''),
-      note: '',
-      state_abbr: env.storeStateAbbr
-    },
+    from: buildMelhorEnvioFromAddress({ commercial: _commercialSender }),
     to: {
       name: order.customer_name || 'Cliente',
       phone: String(order.customer_phone || '').replace(/\D/g, '').slice(0, 11),
@@ -828,13 +967,7 @@ async function createShipmentInCart(order, serviceId) {
     },
     products,
     volumes,
-    options: {
-      insurance_value: insuranceValue,
-      receipt: false,
-      own_hand: false,
-      reverse_manage: false,
-      non_commercial: true
-    }
+    options
   };
 
   console.log('[MelhorEnvio] Payload enviado para /me/cart:', JSON.stringify(requestBody, null, 2));
@@ -859,7 +992,7 @@ async function createShipmentInCart(order, serviceId) {
     if (!response.ok) {
       const text = await response.text();
       console.error('[MelhorEnvio] Erro na API do carrinho:', text);
-      throw new Error(`Melhor Envio retornou ${response.status}: ${text}`);
+      throw formatMelhorEnvioHttpError(response.status, text);
     }
 
     const data = await response.json();
