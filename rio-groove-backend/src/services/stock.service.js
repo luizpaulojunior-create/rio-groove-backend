@@ -342,6 +342,53 @@ const syncYellowStockItems = async (quantity = DEFAULT_YELLOW_QUANTITY) => {
   };
 };
 
+/** Remove todos os SKUs amarelos (color_key yel) do estoque. */
+const removeYellowStockItems = async () => {
+  const { data: beforeRows, error: beforeErr } = await supabase
+    .from('stock_items')
+    .select('id, sku, category, color_key, quantity')
+    .eq('color_key', 'yel');
+
+  if (beforeErr) {
+    if (beforeErr.code === 'PGRST205') {
+      throw new Error('Tabela stock_items não existe. Execute o script SQL no Supabase.');
+    }
+    throw beforeErr;
+  }
+
+  const rows = beforeRows || [];
+  if (rows.length === 0) {
+    return {
+      total_matched: 0,
+      total_removed: 0,
+      previous_quantity: 0,
+      message: 'Nenhum SKU amarelo (yel) encontrado no estoque.',
+    };
+  }
+
+  const previousQuantity = rows.reduce(
+    (sum, row) => sum + Number(row.quantity ?? row.stock ?? 0),
+    0
+  );
+
+  const { data: removedRows, error: deleteErr } = await supabase
+    .from('stock_items')
+    .delete()
+    .eq('color_key', 'yel')
+    .select('id, sku, category');
+
+  if (deleteErr) throw deleteErr;
+
+  const removed = removedRows || [];
+  return {
+    total_matched: rows.length,
+    total_removed: removed.length,
+    previous_quantity: previousQuantity,
+    sample_skus: removed.slice(0, 8).map((row) => row.sku),
+    message: `${removed.length} SKUs amarelos removidos do estoque (antes: ${previousQuantity} un. no total).`,
+  };
+};
+
 /** Zera estoque operacional da cor White (color_key wht). Não afeta Off White (off). */
 const zeroWhiteStockItems = async () => {
   const { data: beforeRows, error: beforeErr } = await supabase
@@ -521,6 +568,7 @@ module.exports = {
   incrementStock,
   seedStockItems,
   syncYellowStockItems,
+  removeYellowStockItems,
   zeroWhiteStockItems,
   applyFocusOperationalStock
 };

@@ -72,6 +72,15 @@ const syncYellowStockItems = asyncHandler(async (req, res) => {
   }
 });
 
+const removeYellowStockItems = asyncHandler(async (req, res) => {
+  try {
+    const result = await stockService.removeYellowStockItems();
+    return res.json(result);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Erro ao remover estoque amarelo' });
+  }
+});
+
 const zeroWhiteStockItems = asyncHandler(async (req, res) => {
   try {
     const result = await stockService.zeroWhiteStockItems();
@@ -100,6 +109,7 @@ module.exports = {
   adjustStock,
   seedStockItems,
   syncYellowStockItems,
+  removeYellowStockItems,
   zeroWhiteStockItems,
   applyFocusOperationalStock
 };
