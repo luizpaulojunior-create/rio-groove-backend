@@ -15,7 +15,11 @@ function verifyMelhorEnvioWebhookSignature(req) {
     return { valid: false, reason: 'Cabeçalho x-me-signature ausente.' };
   }
 
-  const rawBody = req.rawBody || JSON.stringify(req.body || {});
+  const rawBody = Buffer.isBuffer(req.rawBody)
+    ? req.rawBody
+    : req.rawBody
+      ? Buffer.from(String(req.rawBody))
+      : Buffer.from(JSON.stringify(req.body || {}));
   const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('base64');
 
   const provided = String(signature).trim();

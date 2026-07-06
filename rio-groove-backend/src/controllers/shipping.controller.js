@@ -23,6 +23,7 @@ const {
 const {
   sendOrderTrackingNotification
 } = require('../services/notifications.service');
+const { syncAllPendingMelhorEnvioTracking } = require('../services/melhorEnvioTrackingSync.service');
 const {
   buildOrderUpdatesFromFulfillment,
   appendOrderLog,
@@ -355,11 +356,17 @@ const getShippingTracking = asyncHandler(async (req, res) => {
   });
 });
 
+const syncAllMelhorEnvioTracking = asyncHandler(async (_req, res) => {
+  const result = await syncAllPendingMelhorEnvioTracking();
+  return res.status(200).json(result);
+});
+
 module.exports = {
   shippingQuote,
   purchaseOrderShipping,
   generateOrderShippingLabel,
   fulfillOrderShippingLabel,
   downloadOrderShippingLabelPdf,
-  getShippingTracking
+  getShippingTracking,
+  syncAllMelhorEnvioTracking,
 };

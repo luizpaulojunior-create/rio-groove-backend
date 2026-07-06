@@ -90,7 +90,16 @@ Verifica: `/api/health`, catálogo, imagem Supabase, pedido de referência, loja
 | `MELHOR_ENVIO_INVOICE_KEY` | Chave NF-e (44 dígitos) para envio comercial CNPJ (J&T) |
 | `MELHOR_ENVIO_MIN_INSURANCE_VALUE` | Valor segurado mínimo (padrão `5`) |
 | `MELHOR_ENVIO_REQUIRE_INVOICE_FOR_CNPJ` | `true` bloqueia etiqueta sem NF quando remetente é CNPJ |
-| `MELHOR_RASTREIO_GRAPHQL_TOKEN` | Opcional — eventos granulares (ex.: saiu para entrega) via Melhor Rastreio |
+
+**Rastreamento granular (em trânsito / saiu para entrega):** o **Melhor Rastreio não oferece API pública** para integradores — é só o site para consulta manual. O Melhor Envio informa apenas status de ciclo de vida (`posted`, `delivered`, etc.). No admin, use o link **Ver no Melhor Rastreio** e os botões **Atualizar Entrega** somente quando precisar refinar o status entre *postado* e *entregue*.
+
+**Sincronização automática Melhor Envio → admin (escala):**
+
+1. **Webhooks** — cadastre `POST /api/webhooks/melhor-envio` na Área Dev do ME. Cada mudança de etiqueta (`order.posted`, `order.delivered`, etc.) atualiza o pedido em tempo real.
+2. **Job em background** — a cada 15 min o backend consulta em lote todos os pedidos com etiqueta ativa via API `shipment/tracking` (até milhares sem abrir um a um).
+3. Variáveis opcionais: `ME_TRACKING_SYNC_ENABLED` (`false` desliga), `ME_TRACKING_SYNC_INTERVAL_MS` (padrão `900000`).
+
+Endpoint manual (admin autenticado): `POST /api/shipping/tracking/sync-all`
 
 **Webhook Melhor Envio (produção):** cadastre em Integrações → Área Dev. → seu app → Novo Webhook:
 

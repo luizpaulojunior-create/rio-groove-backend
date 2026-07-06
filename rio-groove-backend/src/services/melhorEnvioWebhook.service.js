@@ -1,5 +1,10 @@
 const { verifyMelhorEnvioWebhookSignature } = require('../utils/melhor-envio-webhook');
-const { getOrderByMelhorEnvioShipmentId, updateOrderById } = require('./orders.service');
+const {
+  getOrderByMelhorEnvioShipmentId,
+  hasWebhookEventBeenProcessed,
+  registerWebhookEvent,
+  updateOrderById,
+} = require('./orders.service');
 const {
   mapMelhorEnvioStatusToFulfillment,
   normalizeTrackingCode,
@@ -47,7 +52,19 @@ async function processMelhorEnvioWebhook(req) {
     return { ignored: true, reason: 'Webhook sem id de envio.' };
   }
 
-  const order = await getOrderByMelhorEnvioShipmentId(String(shipmentId));
+  const webhookTopic = String(eventName || data.status || 'unknown');
+  const shipmentRef = String(shipmentId);
+
+  const alreadyProcessed = await hasWebhookEventBeenProcessed({
+    provider: 'melhor_envio',
+    topic: webhookTopic,
+    resourceId: shipmentRef,
+  });
+  if (alreadyProcessed) {
+    return { ignored: true, reason: 'Evento já processado.', shipment_id: shipmentRef };
+  }
+
+  const order = await getOrderByMelhorEnvioShipmentId(shipmentRef);
   if (!order) {
     console.warn('[MelhorEnvioWebhook] Pedido não encontrado para envio', shipmentId);
     return { ignored: true, reason: 'Pedido não encontrado para este envio.' };
@@ -65,6 +82,13 @@ async function processMelhorEnvioWebhook(req) {
   });
 
   if (!Object.keys(updates).length) {
+    await registerWebhookEvent({
+      provider: 'melhor_envio',
+      topic: webhookTopic,
+      action: String(data.status || ''),
+      resourceId: shipmentRef,
+      payload: body,
+    });
     return {
       ignored: true,
       order_id: order.id,
@@ -81,6 +105,14 @@ async function processMelhorEnvioWebhook(req) {
   });
 
   const updatedOrder = await updateOrderById(order.id, updates);
+
+  await registerWebhookEvent({
+    provider: 'melhor_envio',
+    topic: webhookTopic,
+    action: String(data.status || ''),
+    resourceId: shipmentRef,
+    payload: body,
+  });
 
   return {
     ignored: false,

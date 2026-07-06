@@ -136,6 +136,40 @@ async function getOrderByMelhorEnvioShipmentId(shipmentId) {
   return data;
 }
 
+const MELHOR_ENVIO_TRACKING_SYNC_STATUSES = [
+  'preparando_envio',
+  'etiqueta_gerada',
+  'postado',
+  'em_transito',
+  'saiu_para_entrega',
+];
+
+async function getOrdersForMelhorEnvioTrackingSync({ limit = 200, offset = 0 } = {}) {
+  const { data, error, count } = await supabase
+    .from('orders')
+    .select('*', { count: 'exact' })
+    .not('melhor_envio_shipment_id', 'is', null)
+    .in('fulfillment_status', MELHOR_ENVIO_TRACKING_SYNC_STATUSES)
+    .order('updated_at', { ascending: true })
+    .range(offset, offset + limit - 1);
+
+  if (error) throw error;
+  return { orders: data || [], total: count || 0 };
+}
+
+async function hasWebhookEventBeenProcessed({ provider, topic, resourceId }) {
+  const { data, error } = await supabase
+    .from('webhook_events')
+    .select('id')
+    .eq('provider', provider)
+    .eq('topic', topic)
+    .eq('resource_id', String(resourceId || ''))
+    .maybeSingle();
+
+  if (error) throw error;
+  return Boolean(data);
+}
+
 async function getOrders(options = {}) {
   const limit = options.limit || 200;
   const offset = options.offset || 0;
@@ -233,6 +267,8 @@ module.exports = {
   getOrderByExternalReference,
   getOrderByReference,
   getOrderByMelhorEnvioShipmentId,
+  getOrdersForMelhorEnvioTrackingSync,
+  hasWebhookEventBeenProcessed,
   getOrderItems,
   getOrderWithItems,
   registerWebhookEvent

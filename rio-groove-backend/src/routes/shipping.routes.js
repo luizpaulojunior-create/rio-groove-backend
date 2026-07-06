@@ -8,7 +8,8 @@ const {
   generateOrderShippingLabel,
   fulfillOrderShippingLabel,
   downloadOrderShippingLabelPdf,
-  getShippingTracking
+  getShippingTracking,
+  syncAllMelhorEnvioTracking,
 } = require('../controllers/shipping.controller');
 
 const router = express.Router();
@@ -21,5 +22,6 @@ router.post('/api/shipping/label', requireAdminAuth, requireMinRole('editor'), g
 router.post('/api/shipping/label/fulfill', requireAdminAuth, requireMinRole('editor'), fulfillOrderShippingLabel);
 router.get('/api/shipping/label/:id/pdf', requireAdminAuth, requireMinRole('editor'), downloadOrderShippingLabelPdf);
 router.get('/api/shipping/tracking/:id', requireAdminAuth, getShippingTracking);
+router.post('/api/shipping/tracking/sync-all', requireAdminAuth, requireMinRole('editor'), syncAllMelhorEnvioTracking);
 
 module.exports = router;

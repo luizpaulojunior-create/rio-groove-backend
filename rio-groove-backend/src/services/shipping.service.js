@@ -1229,7 +1229,8 @@ async function fetchMelhorEnvioTracking(shipmentIds = []) {
   return payload;
 }
 
-async function syncOrderTrackingFromMelhorEnvio(order) {
+async function syncOrderTrackingFromMelhorEnvio(order, options = {}) {
+  const { skipCarrierLookup = false } = options;
   const shipmentId = order?.melhor_envio_shipment_id;
   if (!shipmentId) {
     return {
@@ -1263,7 +1264,7 @@ async function syncOrderTrackingFromMelhorEnvio(order) {
   let mappedFulfillment = mapMelhorEnvioStatusToFulfillment(meStatus);
   let carrierMeta = null;
 
-  if (trackingCode) {
+  if (trackingCode && !skipCarrierLookup) {
     const { syncFulfillmentFromMelhorRastreio } = require('./melhorRastreio.service');
     carrierMeta = await syncFulfillmentFromMelhorRastreio(trackingCode);
     mappedFulfillment = pickHighestFulfillmentStatus([
@@ -1294,6 +1295,9 @@ async function syncOrderTrackingFromMelhorEnvio(order) {
     });
   }
 
+  const carrierReason =
+    carrierMeta && carrierMeta.synced === false ? carrierMeta.reason || null : null;
+
   return {
     order: updatedOrder,
     synced: true,
@@ -1302,6 +1306,8 @@ async function syncOrderTrackingFromMelhorEnvio(order) {
     trackingCode: trackingCode || order.shipping_tracking_code,
     carrierStatus: carrierMeta?.lastStatus || null,
     carrierEvent: carrierMeta?.lastEvent || null,
+    carrierReason,
+    reason: carrierReason,
     raw: shipmentData,
   };
 }

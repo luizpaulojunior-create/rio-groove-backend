@@ -6,6 +6,7 @@ const env = require('./config/env');
 const { testResend } = require('./services/notifications.service');
 const { syncYellowStockItems } = require('./services/stock.service');
 const { loadInsumoCostConfig } = require('./services/insumoCosts.service');
+const { startMelhorEnvioTrackingSyncScheduler } = require('./services/melhorEnvioTrackingSync.service');
 
 console.log('[BOOT] Iniciando servidor...');
 console.log('[BOOT] Rotas de shipping carregadas');
@@ -52,4 +53,6 @@ app.listen(env.port, () => {
     .catch((error) => {
       console.error('[BOOT] Yellow stock sync failed:', error.message);
     });
+
+  startMelhorEnvioTrackingSyncScheduler();
 });
