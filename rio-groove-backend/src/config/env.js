@@ -41,6 +41,7 @@ const env = {
   melhorEnvioInvoiceKey: String(process.env.MELHOR_ENVIO_INVOICE_KEY || '').replace(/\D/g, ''),
   melhorEnvioMinInsuranceValue: Number(process.env.MELHOR_ENVIO_MIN_INSURANCE_VALUE || 5),
   melhorEnvioRequireInvoiceForCnpj: process.env.MELHOR_ENVIO_REQUIRE_INVOICE_FOR_CNPJ === 'true',
+  melhorRastreioGraphqlToken: process.env.MELHOR_RASTREIO_GRAPHQL_TOKEN || '',
   adminNotificationEmail: process.env.ADMIN_NOTIFICATION_EMAIL || 'riogroovemovimentos@gmail.com',
   defaultCurrency: process.env.DEFAULT_CURRENCY || 'BRL',
   storeName: process.env.STORE_NAME || 'Rio Groove Store',

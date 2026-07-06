@@ -122,6 +122,20 @@ async function getOrderByReference(reference) {
   return data;
 }
 
+async function getOrderByMelhorEnvioShipmentId(shipmentId) {
+  const id = String(shipmentId || '').trim();
+  if (!id) return null;
+
+  const { data, error } = await supabase
+    .from('orders')
+    .select('*')
+    .eq('melhor_envio_shipment_id', id)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
 async function getOrders(options = {}) {
   const limit = options.limit || 200;
   const offset = options.offset || 0;
@@ -218,6 +232,7 @@ module.exports = {
   updateOrderByExternalReference,
   getOrderByExternalReference,
   getOrderByReference,
+  getOrderByMelhorEnvioShipmentId,
   getOrderItems,
   getOrderWithItems,
   registerWebhookEvent

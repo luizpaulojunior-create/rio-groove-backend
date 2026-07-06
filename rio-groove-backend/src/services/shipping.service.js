@@ -1105,12 +1105,71 @@ async function ensureShippingPurchased(order, shipmentId) {
 const ME_STATUS_TO_FULFILLMENT = {
   pending: 'preparando_envio',
   released: 'etiqueta_gerada',
+  generated: 'etiqueta_gerada',
+  received: 'em_transito',
   posted: 'postado',
   delivered: 'entregue',
   undelivered: 'em_transito',
+  paused: 'em_transito',
   suspended: 'em_transito',
   canceled: 'cancelado',
+  cancelled: 'cancelado',
 };
+
+const FULFILLMENT_RANK = {
+  aguardando_pagamento: 0,
+  pagamento_aprovado: 1,
+  estoque_reservado: 2,
+  aguardando_producao: 3,
+  em_producao: 4,
+  producao_concluida: 5,
+  preparando_envio: 6,
+  etiqueta_gerada: 7,
+  postado: 8,
+  em_transito: 9,
+  saiu_para_entrega: 10,
+  entregue: 11,
+  cancelado: -1,
+};
+
+function shouldAdvanceFulfillment(currentStatus, nextStatus) {
+  if (!nextStatus) return false;
+  if (nextStatus === 'cancelado') return currentStatus !== 'entregue';
+  const currentRank = FULFILLMENT_RANK[currentStatus] ?? -1;
+  const nextRank = FULFILLMENT_RANK[nextStatus] ?? -1;
+  return nextRank > currentRank;
+}
+
+function normalizeTrackingCode(value) {
+  if (!value) return '';
+  if (typeof value === 'object') {
+    return normalizeTrackingCode(
+      value.code || value.tracking || value.tracking_code || value.trackingCode || '',
+    );
+  }
+  const trimmed = String(value).trim();
+  if (!trimmed || trimmed === '[object Object]') return '';
+  return trimmed;
+}
+
+function buildTrackingSyncUpdates(order, { fulfillmentStatus, trackingCode, melhorEnvioStatus } = {}) {
+  const updates = {};
+  const normalizedTracking = normalizeTrackingCode(trackingCode);
+
+  if (normalizedTracking && normalizedTracking !== order.shipping_tracking_code) {
+    updates.shipping_tracking_code = normalizedTracking;
+  }
+
+  if (
+    fulfillmentStatus &&
+    shouldAdvanceFulfillment(order.fulfillment_status, fulfillmentStatus)
+  ) {
+    updates.fulfillment_status = fulfillmentStatus;
+    updates.shipping_status = fulfillmentStatus;
+  }
+
+  return updates;
+}
 
 function mapMelhorEnvioStatusToFulfillment(meStatus) {
   const key = String(meStatus || '').toLowerCase().trim();
@@ -1179,29 +1238,48 @@ async function syncOrderTrackingFromMelhorEnvio(order) {
   }
 
   const meStatus = shipmentData.status || shipmentData.situation || shipmentData.tracking?.status;
-  const trackingCode =
+  const trackingCode = normalizeTrackingCode(
     shipmentData.tracking ||
-    shipmentData.tracking_code ||
-    shipmentData.trackingCode ||
-    order.shipping_tracking_code ||
-    null;
+      shipmentData.tracking_code ||
+      shipmentData.trackingCode ||
+      shipmentData.melhorenvio_tracking ||
+      order.shipping_tracking_code,
+  );
 
-  const mappedFulfillment = mapMelhorEnvioStatusToFulfillment(meStatus);
-  const updates = {};
+  let mappedFulfillment = mapMelhorEnvioStatusToFulfillment(meStatus);
+  let carrierMeta = null;
 
-  if (trackingCode && trackingCode !== order.shipping_tracking_code) {
-    updates.shipping_tracking_code = String(trackingCode);
+  if (trackingCode) {
+    const { syncFulfillmentFromMelhorRastreio } = require('./melhorRastreio.service');
+    carrierMeta = await syncFulfillmentFromMelhorRastreio(trackingCode);
+    if (
+      carrierMeta?.fulfillmentStatus &&
+      shouldAdvanceFulfillment(mappedFulfillment || order.fulfillment_status, carrierMeta.fulfillmentStatus)
+    ) {
+      mappedFulfillment = carrierMeta.fulfillmentStatus;
+    }
   }
 
-  if (mappedFulfillment && mappedFulfillment !== order.fulfillment_status) {
-    updates.fulfillment_status = mappedFulfillment;
-    updates.shipping_status = mappedFulfillment;
-  }
+  const updates = buildTrackingSyncUpdates(order, {
+    fulfillmentStatus: mappedFulfillment,
+    trackingCode,
+    melhorEnvioStatus: meStatus,
+  });
 
   let updatedOrder = order;
   if (Object.keys(updates).length > 0) {
     const { updateOrderById } = require('./orders.service');
-    updatedOrder = await updateOrderById(order.id, updates);
+    const { appendOrderLog } = require('../utils/orderFulfillment');
+    updatedOrder = await updateOrderById(order.id, {
+      ...updates,
+      order_logs: appendOrderLog(order.order_logs, {
+        action: `Rastreamento atualizado: ${mappedFulfillment || meStatus}`,
+        message: carrierMeta?.lastEvent
+          ? `Transportadora: ${carrierMeta.lastEvent}`
+          : `Melhor Envio: ${meStatus || 'atualizado'}`,
+        user: 'Melhor Envio',
+      }),
+    });
   }
 
   return {
@@ -1210,6 +1288,8 @@ async function syncOrderTrackingFromMelhorEnvio(order) {
     melhorEnvioStatus: meStatus,
     fulfillmentStatus: mappedFulfillment || order.fulfillment_status,
     trackingCode: trackingCode || order.shipping_tracking_code,
+    carrierStatus: carrierMeta?.lastStatus || null,
+    carrierEvent: carrierMeta?.lastEvent || null,
     raw: shipmentData,
   };
 }
@@ -1231,6 +1311,10 @@ module.exports = {
   fetchMelhorEnvioTracking,
   syncOrderTrackingFromMelhorEnvio,
   mapMelhorEnvioStatusToFulfillment,
+  normalizeTrackingCode,
+  shouldAdvanceFulfillment,
+  buildTrackingSyncUpdates,
+  FULFILLMENT_RANK,
   PICKUP_SHIPPING_ID,
   PICKUP_SHIPPING_LABEL,
   isRioPickupCep,

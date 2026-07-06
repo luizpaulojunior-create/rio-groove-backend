@@ -12,6 +12,8 @@ const {
   resolveMelhorEnvioShipmentId,
   ensureShippingPurchased,
   syncOrderTrackingFromMelhorEnvio,
+  normalizeTrackingCode,
+  buildTrackingSyncUpdates,
   isMelhorEnvioShipmentUuid,
 } = require('../services/shipping.service');
 const {
@@ -289,17 +291,49 @@ const getShippingTracking = asyncHandler(async (req, res) => {
   let syncedOrder = order;
   let syncMeta = { synced: false };
 
-  if (order.melhor_envio_shipment_id && !isPickupShippingMethod(order.shipping_method)) {
+  if (!isPickupShippingMethod(order.shipping_method)) {
     try {
-      const syncResult = await syncOrderTrackingFromMelhorEnvio(order);
-      syncedOrder = syncResult.order || order;
-      syncMeta = {
-        synced: syncResult.synced,
-        melhor_envio_status: syncResult.melhorEnvioStatus || null,
-        reason: syncResult.reason || null,
-      };
+      if (order.melhor_envio_shipment_id) {
+        const syncResult = await syncOrderTrackingFromMelhorEnvio(order);
+        syncedOrder = syncResult.order || order;
+        syncMeta = {
+          synced: syncResult.synced,
+          melhor_envio_status: syncResult.melhorEnvioStatus || null,
+          carrier_status: syncResult.carrierStatus || null,
+          carrier_event: syncResult.carrierEvent || null,
+          reason: syncResult.reason || null,
+        };
+      } else {
+        const trackingCode = normalizeTrackingCode(order.shipping_tracking_code);
+        if (trackingCode) {
+          const { syncFulfillmentFromMelhorRastreio } = require('../services/melhorRastreio.service');
+          const carrierMeta = await syncFulfillmentFromMelhorRastreio(trackingCode);
+          const updates = buildTrackingSyncUpdates(order, {
+            fulfillmentStatus: carrierMeta.fulfillmentStatus,
+            trackingCode,
+          });
+          if (Object.keys(updates).length > 0) {
+            const { updateOrderById } = require('../services/orders.service');
+            const { appendOrderLog } = require('../utils/orderFulfillment');
+            syncedOrder = await updateOrderById(order.id, {
+              ...updates,
+              order_logs: appendOrderLog(order.order_logs, {
+                action: `Rastreamento atualizado: ${carrierMeta.fulfillmentStatus}`,
+                message: carrierMeta.lastEvent || 'Atualização via código de rastreio',
+                user: 'Melhor Rastreio',
+              }),
+            });
+          }
+          syncMeta = {
+            synced: carrierMeta.synced,
+            carrier_status: carrierMeta.lastStatus || null,
+            carrier_event: carrierMeta.lastEvent || null,
+            reason: carrierMeta.reason || null,
+          };
+        }
+      }
     } catch (error) {
-      console.error('[Shipping] syncOrderTrackingFromMelhorEnvio', error.message);
+      console.error('[Shipping] sync tracking', error.message);
       syncMeta = { synced: false, reason: error.message };
     }
   }
