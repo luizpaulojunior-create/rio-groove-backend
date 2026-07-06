@@ -1140,6 +1140,20 @@ function shouldAdvanceFulfillment(currentStatus, nextStatus) {
   return nextRank > currentRank;
 }
 
+function pickHighestFulfillmentStatus(statuses = []) {
+  let best = null;
+  let bestRank = -1;
+  for (const status of statuses) {
+    if (!status) continue;
+    const rank = FULFILLMENT_RANK[status] ?? -1;
+    if (rank > bestRank) {
+      bestRank = rank;
+      best = status;
+    }
+  }
+  return best;
+}
+
 function normalizeTrackingCode(value) {
   if (!value) return '';
   if (typeof value === 'object') {
@@ -1252,12 +1266,10 @@ async function syncOrderTrackingFromMelhorEnvio(order) {
   if (trackingCode) {
     const { syncFulfillmentFromMelhorRastreio } = require('./melhorRastreio.service');
     carrierMeta = await syncFulfillmentFromMelhorRastreio(trackingCode);
-    if (
-      carrierMeta?.fulfillmentStatus &&
-      shouldAdvanceFulfillment(mappedFulfillment || order.fulfillment_status, carrierMeta.fulfillmentStatus)
-    ) {
-      mappedFulfillment = carrierMeta.fulfillmentStatus;
-    }
+    mappedFulfillment = pickHighestFulfillmentStatus([
+      mappedFulfillment,
+      carrierMeta?.fulfillmentStatus,
+    ]);
   }
 
   const updates = buildTrackingSyncUpdates(order, {
@@ -1313,6 +1325,7 @@ module.exports = {
   mapMelhorEnvioStatusToFulfillment,
   normalizeTrackingCode,
   shouldAdvanceFulfillment,
+  pickHighestFulfillmentStatus,
   buildTrackingSyncUpdates,
   FULFILLMENT_RANK,
   PICKUP_SHIPPING_ID,
