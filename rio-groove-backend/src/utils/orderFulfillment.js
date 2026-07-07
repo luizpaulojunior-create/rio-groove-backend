@@ -23,6 +23,8 @@ const DB_TO_FULFILLMENT = {
   cancelled: 'cancelado',
   refunded: 'cancelado',
   fulfilled: 'entregue',
+  entregue: 'entregue',
+  delivered: 'entregue',
 };
 
 const ALLOWED_DB_PAYMENT_STATUSES = new Set([
@@ -49,7 +51,9 @@ function isOrderPaid(order) {
     paymentStatus === 'approved' ||
     Boolean(order.paid_at) ||
     orderStatus === 'paid' ||
-    orderStatus === 'fulfilled'
+    orderStatus === 'fulfilled' ||
+    orderStatus === 'entregue' ||
+    orderStatus === 'delivered'
   );
 }
 
@@ -151,7 +155,7 @@ function buildOrderUpdatesFromFulfillment(fulfillmentStatus, existingOrder = {})
       updates.payment_status = 'failed';
       break;
     case 'entregue':
-      updates.status = 'fulfilled';
+      updates.status = 'entregue';
       updates.payment_status = normalizeDbPaymentStatus(existingOrder.payment_status, 'paid');
       updates.shipping_status = 'entregue';
       break;
