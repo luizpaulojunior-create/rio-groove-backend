@@ -20,7 +20,7 @@ function errorHandler(error, req, res, next) {
     });
   }
 
-  const status = error.statusCode || 500;
+  const status = error.statusCode || error.status || 500;
   const isProd = process.env.NODE_ENV === 'production';
   const clientMessage =
     status < 500

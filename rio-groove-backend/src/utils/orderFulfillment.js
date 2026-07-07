@@ -25,6 +25,21 @@ const DB_TO_FULFILLMENT = {
   fulfilled: 'entregue',
 };
 
+const ALLOWED_DB_PAYMENT_STATUSES = new Set([
+  'pending',
+  'authorized',
+  'paid',
+  'failed',
+  'refunded',
+]);
+
+function normalizeDbPaymentStatus(value, fallback = 'paid') {
+  const key = String(value || '').toLowerCase().trim();
+  if (key === 'approved') return 'paid';
+  if (ALLOWED_DB_PAYMENT_STATUSES.has(key)) return key;
+  return fallback;
+}
+
 function isOrderPaid(order) {
   if (!order) return false;
   const paymentStatus = String(order.payment_status || '').toLowerCase();
@@ -123,7 +138,7 @@ function buildOrderUpdatesFromFulfillment(fulfillmentStatus, existingOrder = {})
       break;
     case 'pagamento_aprovado':
       updates.status = 'paid';
-      updates.payment_status = 'paid';
+      updates.payment_status = normalizeDbPaymentStatus(existingOrder.payment_status, 'paid');
       if (!existingOrder.paid_at) {
         updates.paid_at = new Date().toISOString();
       }
@@ -137,18 +152,22 @@ function buildOrderUpdatesFromFulfillment(fulfillmentStatus, existingOrder = {})
       break;
     case 'entregue':
       updates.status = 'fulfilled';
-      updates.payment_status = existingOrder.payment_status || 'paid';
+      updates.payment_status = normalizeDbPaymentStatus(existingOrder.payment_status, 'paid');
+      updates.shipping_status = 'entregue';
       break;
     case 'postado':
     case 'em_transito':
     case 'saiu_para_entrega':
       updates.status = 'paid';
-      updates.payment_status = existingOrder.payment_status || 'paid';
+      updates.payment_status = normalizeDbPaymentStatus(existingOrder.payment_status, 'paid');
       updates.shipping_status = fulfillmentStatus;
       break;
     default:
       updates.status = existingOrder.status === 'awaiting_payment' ? 'paid' : (existingOrder.status || 'paid');
-      updates.payment_status = existingOrder.payment_status === 'pending' ? 'paid' : (existingOrder.payment_status || 'paid');
+      updates.payment_status = normalizeDbPaymentStatus(
+        existingOrder.payment_status === 'pending' ? 'paid' : existingOrder.payment_status,
+        'paid',
+      );
       if (fulfillmentStatus === 'pagamento_aprovado' && !existingOrder.paid_at) {
         updates.paid_at = new Date().toISOString();
       }
@@ -173,6 +192,7 @@ function appendOrderLog(existingLogs, entry) {
 
 module.exports = {
   FULFILLMENT_STATUSES,
+  normalizeDbPaymentStatus,
   isOrderPaid,
   canRefundPaidOrder,
   isPaidButWronglyCancelled,

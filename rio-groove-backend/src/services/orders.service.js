@@ -78,7 +78,12 @@ async function updateOrderById(orderId, updates) {
     .select('*')
     .single();
 
-  if (error) throw error;
+  if (error) {
+    const detail = error.message || error.details || error.hint || 'Erro ao atualizar pedido.';
+    const wrapped = new Error(detail);
+    wrapped.statusCode = /check constraint|invalid input value/i.test(detail) ? 400 : 500;
+    throw wrapped;
+  }
   return data;
 }
 
