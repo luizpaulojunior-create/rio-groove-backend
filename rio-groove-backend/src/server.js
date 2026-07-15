@@ -61,23 +61,54 @@ app.listen(env.port, () => {
 
       if (already) {
         console.log('[BOOT] Physical stock sync já aplicado:', releaseToken);
+      } else {
+        const { syncPhysicalStock } = require('./services/stock.service');
+        const result = await syncPhysicalStock();
+        console.log('[BOOT] Physical stock sync:', result.message);
+
+        await supabase.from('webhook_events').upsert({
+          provider: 'system',
+          topic: 'physical_stock_sync',
+          action: 'completed',
+          resource_id: releaseToken,
+          payload: result,
+          processed_at: new Date().toISOString(),
+        }, { onConflict: 'provider,topic,resource_id' });
+      }
+    } catch (error) {
+      console.error('[BOOT] Physical stock sync failed:', error.message);
+    }
+
+    const sizeToken = 'product-size-g1-to-xgg-2026-07-15';
+    try {
+      const supabase = require('./lib/supabase');
+      const { data: already } = await supabase
+        .from('webhook_events')
+        .select('id')
+        .eq('provider', 'system')
+        .eq('topic', 'product_size_g1_to_xgg')
+        .eq('resource_id', sizeToken)
+        .maybeSingle();
+
+      if (already) {
+        console.log('[BOOT] Product size G1→XGG já aplicado:', sizeToken);
         return;
       }
 
-      const { syncPhysicalStock } = require('./services/stock.service');
-      const result = await syncPhysicalStock();
-      console.log('[BOOT] Physical stock sync:', result.message);
+      const { renameProductVariantG1ToXgg } = require('./services/productSizeMigration.service');
+      const result = await renameProductVariantG1ToXgg();
+      console.log('[BOOT] Product size migration:', result.message);
 
       await supabase.from('webhook_events').upsert({
         provider: 'system',
-        topic: 'physical_stock_sync',
+        topic: 'product_size_g1_to_xgg',
         action: 'completed',
-        resource_id: releaseToken,
+        resource_id: sizeToken,
         payload: result,
         processed_at: new Date().toISOString(),
       }, { onConflict: 'provider,topic,resource_id' });
     } catch (error) {
-      console.error('[BOOT] Physical stock sync failed:', error.message);
+      console.error('[BOOT] Product size G1→XGG failed:', error.message);
     }
   })();
 

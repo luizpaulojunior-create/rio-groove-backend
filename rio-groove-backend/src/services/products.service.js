@@ -1,4 +1,8 @@
 const supabase = require('../lib/supabase');
+const {
+  normalizeLegacySize,
+  normalizeLegacySku,
+} = require('./productSizeMigration.service');
 
 function mapColorKeyFromVariant(colorVariant) {
   if (!colorVariant) return null;
@@ -156,8 +160,8 @@ async function createProduct(productData) {
     const variantsToInsert = variants.map(v => ({
       product_id: data.id,
       color: v.color,
-      size: v.size,
-      sku: v.sku,
+      size: normalizeLegacySize(v.size),
+      sku: normalizeLegacySku(v.sku) || v.sku,
       stock: v.stock || 0,
       price_override: v.price_override || null,
       status: v.status || 'active'
@@ -220,8 +224,8 @@ async function updateProduct(id, updates) {
       const variantsToInsert = variants.map(v => ({
         product_id: id,
         color: v.color,
-        size: v.size,
-        sku: v.sku,
+        size: normalizeLegacySize(v.size),
+        sku: normalizeLegacySku(v.sku) || v.sku,
         stock: v.stock || 0,
         price_override: v.price_override || null,
         status: v.status || 'active'
