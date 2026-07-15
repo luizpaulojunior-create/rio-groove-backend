@@ -315,11 +315,9 @@ async function resolveShippingSelection({ cep, package: pkg, shipping, pickup_ac
 
 async function getShippingQuote({ cep, weight, height, width, length }) {
   const token = await getValidToken();
-  const tokenPrefix = token ? token.substring(0, 15) + '...' : 'NENHUM';
   const tokenOrigin = (token && token === env.melhorEnvioToken) ? 'env' : 'supabase';
-  
-  console.log(`[MelhorEnvio] getShippingQuote - Origem do token: ${tokenOrigin} | Prefixo: ${tokenPrefix}`);
-  console.log(`[MelhorEnvio] getShippingQuote - Header enviado: Authorization: Bearer ${tokenPrefix}`);
+
+  console.log(`[MelhorEnvio] getShippingQuote - Origem do token: ${tokenOrigin} | presente: ${Boolean(token)}`);
 
   if (!token) {
     throw new Error('Token do Melhor Envio não configurado no backend.');
@@ -617,12 +615,10 @@ async function fetchMelhorEnvioOrderDetails(shipmentId) {
 
 async function executeMelhorEnvioRequest(endpoint, body) {
   const token = await getValidToken();
-  const tokenPrefix = token ? token.substring(0, 15) + '...' : 'NENHUM';
   const tokenOrigin = (token && token === env.melhorEnvioToken) ? 'env' : 'supabase';
 
   console.log(`[MelhorEnvio] executeMelhorEnvioRequest - Endpoint: ${endpoint}`);
-  console.log(`[MelhorEnvio] executeMelhorEnvioRequest - Origem do token: ${tokenOrigin} | Prefixo: ${tokenPrefix}`);
-  console.log(`[MelhorEnvio] executeMelhorEnvioRequest - Header enviado: Authorization: Bearer ${tokenPrefix}`);
+  console.log(`[MelhorEnvio] executeMelhorEnvioRequest - Origem do token: ${tokenOrigin} | presente: ${Boolean(token)}`);
 
   if (!token) {
     throw new Error('Token do Melhor Envio não configurado no backend.');
@@ -735,10 +731,9 @@ async function printShippingLabel(shipmentId, { mode = 'public' } = {}) {
   try {
     const url = `${getMelhorEnvioBaseUrl()}/print`;
     const token = await getValidToken();
-    const tokenPrefix = token ? token.substring(0, 15) + '...' : 'NENHUM';
-    const tokenOrigin = (token && token === env.melhorEnvioToken) ? 'env' : 'supabase';
+        const tokenOrigin = (token && token === env.melhorEnvioToken) ? 'env' : 'supabase';
     
-    console.log(`[MelhorEnvio] printShippingLabel - Origem do token: ${tokenOrigin} | Prefixo: ${tokenPrefix} | mode: ${mode}`);
+    console.log(`[MelhorEnvio] printShippingLabel - Origem do token: ${tokenOrigin} | mode: ${mode}`);
 
     const response = await fetch(url, {
       method: 'POST',
@@ -881,11 +876,9 @@ async function downloadShippingLabelPdf(shipmentId) {
 
 async function createShipmentInCart(order, serviceId) {
   const token = await getValidToken();
-  const tokenPrefix = token ? token.substring(0, 15) + '...' : 'NENHUM';
   const tokenOrigin = (token && token === env.melhorEnvioToken) ? 'env' : 'supabase';
 
-  console.log(`[MelhorEnvio] createShipmentInCart - Origem do token: ${tokenOrigin} | Prefixo: ${tokenPrefix}`);
-  console.log(`[MelhorEnvio] createShipmentInCart - Header enviado: Authorization: Bearer ${tokenPrefix}`);
+  console.log(`[MelhorEnvio] createShipmentInCart - Origem do token: ${tokenOrigin} | presente: ${Boolean(token)}`);
 
   if (!token) {
     throw new Error('Token do Melhor Envio não configurado no backend.');

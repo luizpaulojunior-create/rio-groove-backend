@@ -27,6 +27,12 @@ async function readinessCheck(req, res) {
   checks.mercadoPago = env.mercadoPagoAccessToken ? 'configured' : 'missing';
   if (!env.mercadoPagoAccessToken) ok = false;
 
+  checks.mercadoPagoWebhook = env.mercadoPagoWebhookSecret ? 'configured' : 'missing';
+  checks.melhorEnvioWebhook = env.melhorEnvioClientSecret ? 'configured' : 'missing';
+  if (env.nodeEnv === 'production') {
+    if (!env.mercadoPagoWebhookSecret || !env.melhorEnvioClientSecret) ok = false;
+  }
+
   const body = {
     ok,
     service: 'Rio Groove Store Backend',
