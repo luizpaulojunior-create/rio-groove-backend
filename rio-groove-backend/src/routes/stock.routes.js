@@ -12,7 +12,8 @@ const {
   syncYellowStockItems,
   removeYellowStockItems,
   zeroWhiteStockItems,
-  applyFocusOperationalStock
+  applyFocusOperationalStock,
+  syncPhysicalStock,
 } = require('../controllers/stock.controller');
 
 const router = express.Router();
@@ -24,6 +25,7 @@ router.post('/api/stock/sync-yellow', requireAdminAuth, requireMinRole('superadm
 router.post('/api/stock/remove-yellow', requireAdminAuth, requireMinRole('superadmin'), removeYellowStockItems);
 router.post('/api/stock/zero-white', requireAdminAuth, requireMinRole('superadmin'), zeroWhiteStockItems);
 router.post('/api/stock/apply-focus', requireAdminAuth, requireMinRole('superadmin'), applyFocusOperationalStock);
+router.post('/api/stock/sync-physical', requireAdminAuth, requireMinRole('superadmin'), syncPhysicalStock);
 router.post('/api/stock', requireAdminAuth, requireMinRole('editor'), createStockItem);
 router.put('/api/stock/:id', requireAdminAuth, requireMinRole('editor'), updateStockItem);
 router.delete('/api/stock/:id', requireAdminAuth, requireMinRole('editor'), deleteStockItem);

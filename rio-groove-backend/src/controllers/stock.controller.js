@@ -100,6 +100,15 @@ const applyFocusOperationalStock = asyncHandler(async (req, res) => {
   }
 });
 
+const syncPhysicalStock = asyncHandler(async (req, res) => {
+  try {
+    const result = await stockService.syncPhysicalStock();
+    return res.json(result);
+  } catch (error) {
+    return res.status(400).json({ error: error.message || 'Erro ao sincronizar estoque físico' });
+  }
+});
+
 module.exports = {
   getStock,
   getStockItem,
@@ -111,5 +120,6 @@ module.exports = {
   syncYellowStockItems,
   removeYellowStockItems,
   zeroWhiteStockItems,
-  applyFocusOperationalStock
+  applyFocusOperationalStock,
+  syncPhysicalStock,
 };

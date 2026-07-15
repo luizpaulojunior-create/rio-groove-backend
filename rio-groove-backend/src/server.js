@@ -4,7 +4,6 @@ initSentry();
 const app = require('./app');
 const env = require('./config/env');
 const { testResend } = require('./services/notifications.service');
-const { syncYellowStockItems } = require('./services/stock.service');
 const { loadInsumoCostConfig } = require('./services/insumoCosts.service');
 const { startMelhorEnvioTrackingSyncScheduler } = require('./services/melhorEnvioTrackingSync.service');
 
@@ -46,13 +45,41 @@ app.listen(env.port, () => {
       console.error('[BOOT] Insumo cost config failed:', error.message);
     });
 
-  syncYellowStockItems(10)
-    .then((result) => {
-      console.log('[BOOT] Yellow stock sync:', result.message);
-    })
-    .catch((error) => {
-      console.error('[BOOT] Yellow stock sync failed:', error.message);
-    });
+  // One-shot: aplica o estoque físico do caderno uma única vez por release token.
+  // Não reexecuta em restarts posteriores (evita sobrescrever baixas de venda).
+  (async () => {
+    const releaseToken = 'physical-stock-2026-07-15';
+    try {
+      const supabase = require('./lib/supabase');
+      const { data: already } = await supabase
+        .from('webhook_events')
+        .select('id')
+        .eq('provider', 'system')
+        .eq('topic', 'physical_stock_sync')
+        .eq('resource_id', releaseToken)
+        .maybeSingle();
+
+      if (already) {
+        console.log('[BOOT] Physical stock sync já aplicado:', releaseToken);
+        return;
+      }
+
+      const { syncPhysicalStock } = require('./services/stock.service');
+      const result = await syncPhysicalStock();
+      console.log('[BOOT] Physical stock sync:', result.message);
+
+      await supabase.from('webhook_events').upsert({
+        provider: 'system',
+        topic: 'physical_stock_sync',
+        action: 'completed',
+        resource_id: releaseToken,
+        payload: result,
+        processed_at: new Date().toISOString(),
+      }, { onConflict: 'provider,topic,resource_id' });
+    } catch (error) {
+      console.error('[BOOT] Physical stock sync failed:', error.message);
+    }
+  })();
 
   startMelhorEnvioTrackingSyncScheduler();
 });

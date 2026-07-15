@@ -9,8 +9,9 @@ const {
   FABRIC_NEUTRAL,
   categoryUsesFabric,
   classifyLegacyInvalidStockItem,
-  isOperationalCatalogStockItem
+  isOperationalCatalogStockItem,
 } = require('../config/inventory');
+const { buildPhysicalStockRows } = require('../config/physicalStock');
 const { getBlankUnitCosts } = require('./insumoCosts.service');
 
 const getStock = async () => {
@@ -557,6 +558,108 @@ const applyFocusOperationalStock = async (quantity = 10) => {
   };
 };
 
+/**
+ * Aplica estoque físico real do caderno:
+ * - quantidade absoluta por SKU listado
+ * - remove tudo que não estiver na lista
+ */
+const syncPhysicalStock = async () => {
+  const desired = buildPhysicalStockRows();
+  const desiredByKey = new Map(desired.map((row) => [stockDedupKey(row), row]));
+
+  const { data: existing, error: fetchErr } = await supabase
+    .from('stock_items')
+    .select('id, category, gender, model, fabric, color_key, size, quantity, sku, is_active');
+
+  if (fetchErr) {
+    if (fetchErr.code === 'PGRST205') {
+      throw new Error('Tabela stock_items não existe. Execute o script SQL no Supabase.');
+    }
+    throw fetchErr;
+  }
+
+  const existingRows = existing || [];
+  const keepIds = new Set();
+  const matchedKeys = new Set();
+  const updated = [];
+  const BATCH_SIZE = 100;
+
+  for (const row of existingRows) {
+    const key = stockDedupKey({
+      category: row.category,
+      gender: row.gender,
+      model: row.model,
+      fabric: row.fabric || 'Lisa',
+      color_key: row.color_key,
+      size: row.size,
+    });
+    const target = desiredByKey.get(key);
+    if (!target) continue;
+
+    keepIds.add(row.id);
+    matchedKeys.add(key);
+
+    const { data, error } = await supabase
+      .from('stock_items')
+      .update({
+        quantity: target.quantity,
+        is_active: true,
+        min_stock: target.min_stock,
+        color_label: target.color_label,
+        color_hex: target.color_hex,
+        sku: target.sku,
+        unit_cost: target.unit_cost,
+        model: target.model,
+        fabric: target.fabric,
+        gender: target.gender,
+      })
+      .eq('id', row.id)
+      .select('sku, quantity')
+      .single();
+
+    if (error) throw error;
+    updated.push({
+      sku: data.sku,
+      from: row.quantity,
+      to: data.quantity,
+    });
+  }
+
+  const toCreate = desired.filter((row) => !matchedKeys.has(stockDedupKey(row)));
+  if (toCreate.length) {
+    const { error: insertErr } = await supabase.from('stock_items').insert(toCreate);
+    if (insertErr) throw insertErr;
+  }
+
+  const toDelete = existingRows.filter((row) => !keepIds.has(row.id));
+  let deleted = 0;
+  for (let i = 0; i < toDelete.length; i += BATCH_SIZE) {
+    const batch = toDelete.slice(i, i + BATCH_SIZE).map((row) => row.id);
+    const { data: removed, error: deleteErr } = await supabase
+      .from('stock_items')
+      .delete()
+      .in('id', batch)
+      .select('id');
+    if (deleteErr) throw deleteErr;
+    deleted += (removed || []).length;
+  }
+
+  const finalTotal = desired.length;
+  const message =
+    `Estoque físico sincronizado: ${updated.length} atualizados, ${toCreate.length} criados, ` +
+    `${deleted} removidos. Total final: ${finalTotal} SKUs.`;
+
+  return {
+    updated: updated.length,
+    created: toCreate.length,
+    deleted,
+    total_final: finalTotal,
+    skus: desired.map((row) => ({ sku: row.sku, quantity: row.quantity })),
+    removed_sample: toDelete.slice(0, 20).map((row) => row.sku || row.id),
+    message,
+  };
+};
+
 module.exports = {
   getStock,
   getStockItem,
@@ -570,5 +673,6 @@ module.exports = {
   syncYellowStockItems,
   removeYellowStockItems,
   zeroWhiteStockItems,
-  applyFocusOperationalStock
+  applyFocusOperationalStock,
+  syncPhysicalStock,
 };
