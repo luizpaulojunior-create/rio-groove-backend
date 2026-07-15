@@ -48,12 +48,16 @@ const FABRICS = ['Lisa', 'Estonada'];
 /** Malhas do catálogo operacional (insumos físicos). Ajuste se passar a estocar estonada. */
 const OPERATIONAL_FABRICS = ['Lisa'];
 
-const APPAREL_SIZES = ['P', 'M', 'G', 'GG'];
-/** Oversized Tradicional masculino — G1 é o maior (após GG). */
-const OPERATIONAL_MASCULINO_OVERSIZED_SIZES = ['P', 'M', 'G', 'GG', 'G1'];
+const APPAREL_SIZES = ['P', 'M', 'G', 'GG', 'XGG'];
+/** Cropped Oversized — somente P ao G (sem GG/XGG). */
+const OPERATIONAL_CROPPED_SIZES = ['P', 'M', 'G'];
+/** Oversized Tradicional / Regata Machão — P ao XGG (G1 no caderno = XGG). */
+const OPERATIONAL_MASCULINO_OVERSIZED_SIZES = ['P', 'M', 'G', 'GG', 'XGG'];
 
-/** Acréscimo de preço no tamanho G1 (camisas Oversized masculinas, BRL). */
-const MASCULINO_OVERSIZED_G1_SURCHARGE_BRL = 15;
+/** Acréscimo de preço no tamanho XGG (camisas Oversized masculinas, BRL). */
+const MASCULINO_OVERSIZED_XGG_SURCHARGE_BRL = 15;
+/** @deprecated alias — caderno usava G1 para o mesmo tamanho */
+const MASCULINO_OVERSIZED_G1_SURCHARGE_BRL = MASCULINO_OVERSIZED_XGG_SURCHARGE_BRL;
 const ONE_SIZE = 'Tamanho Único';
 
 const COLORS = [
@@ -158,8 +162,9 @@ function getColorsForCategory(category) {
   return COLORS;
 }
 
-function getSizesForCategory(category) {
+function getSizesForCategory(category, model) {
   const cat = normalizeCategory(category);
+  if (model === 'Cropped Oversized') return OPERATIONAL_CROPPED_SIZES;
   if (cat === 'Camisa' || cat === 'Regata') return APPAREL_SIZES;
   return [ONE_SIZE];
 }
@@ -374,7 +379,7 @@ const OPERATIONAL_CATALOG_RULES = [
     models: OPERATIONAL_REGATA_MODELS,
     colorKeys: OPERATIONAL_APPAREL_COLOR_KEYS,
     fabrics: OPERATIONAL_FABRICS,
-    sizes: APPAREL_SIZES
+    sizes: OPERATIONAL_MASCULINO_OVERSIZED_SIZES
   },
   {
     category: 'Camisa',
@@ -382,7 +387,7 @@ const OPERATIONAL_CATALOG_RULES = [
     models: OPERATIONAL_FEMININO_CROPPED_OVERSIZED_MODELS,
     colorKeys: OPERATIONAL_APPAREL_COLOR_KEYS,
     fabrics: OPERATIONAL_FABRICS,
-    sizes: APPAREL_SIZES
+    sizes: OPERATIONAL_CROPPED_SIZES
   },
   {
     category: 'Boné',
@@ -510,10 +515,13 @@ module.exports = {
   VALID_CANECA_SKU,
   FABRICS,
   OPERATIONAL_MASCULINO_OVERSIZED_SIZES,
+  OPERATIONAL_CROPPED_SIZES,
   APPAREL_SIZES,
   ONE_SIZE,
   COLORS,
   UNIT_COST_BY_CATEGORY,
+  MASCULINO_OVERSIZED_XGG_SURCHARGE_BRL,
+  MASCULINO_OVERSIZED_G1_SURCHARGE_BRL,
   SEED_DEFAULTS,
   SEED_CATEGORIES,
   categoryUsesGender,

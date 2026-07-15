@@ -48,7 +48,7 @@ app.listen(env.port, () => {
   // One-shot: aplica o estoque físico do caderno uma única vez por release token.
   // Não reexecuta em restarts posteriores (evita sobrescrever baixas de venda).
   (async () => {
-    const releaseToken = 'physical-stock-2026-07-15';
+    const releaseToken = 'physical-stock-2026-07-15-xgg';
     try {
       const supabase = require('./lib/supabase');
       const { data: already } = await supabase

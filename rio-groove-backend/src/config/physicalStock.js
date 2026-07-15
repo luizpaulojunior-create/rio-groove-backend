@@ -1,8 +1,10 @@
 /**
  * Manifesto do estoque físico real (caderno jul/2026).
- * Camisa = Oversized Tradicional
- * Regata = Machão
- * Cropped = Cropped Oversized
+ * Camisa = Oversized Tradicional → P, M, G, GG, XGG
+ * Regata = Machão → P, M, G, GG, XGG
+ * Cropped = Cropped Oversized → P, M, G (somente)
+ * G1 / XG no caderno = XGG
+ * Tamanhos ausentes no caderno entram com quantity 0.
  */
 const {
   generateSKU,
@@ -14,31 +16,77 @@ const {
 
 const COLOR_META = Object.fromEntries(COLORS.map((c) => [c.key, c]));
 
-const PHYSICAL_STOCK_ENTRIES = [
-  { category: 'Camisa', gender: 'Masculino', model: 'Oversized Tradicional', color_key: 'off', size: 'G', quantity: 3 },
-  { category: 'Camisa', gender: 'Masculino', model: 'Oversized Tradicional', color_key: 'off', size: 'GG', quantity: 7 },
-  { category: 'Camisa', gender: 'Masculino', model: 'Oversized Tradicional', color_key: 'off', size: 'G1', quantity: 3 },
+const SIZES_FULL = ['P', 'M', 'G', 'GG', 'XGG'];
+const SIZES_CROPPED = ['P', 'M', 'G'];
 
-  { category: 'Camisa', gender: 'Masculino', model: 'Oversized Tradicional', color_key: 'blk', size: 'M', quantity: 4 },
-  { category: 'Camisa', gender: 'Masculino', model: 'Oversized Tradicional', color_key: 'blk', size: 'G', quantity: 9 },
-  { category: 'Camisa', gender: 'Masculino', model: 'Oversized Tradicional', color_key: 'blk', size: 'GG', quantity: 3 },
-  { category: 'Camisa', gender: 'Masculino', model: 'Oversized Tradicional', color_key: 'blk', size: 'G1', quantity: 5 },
+/** Quantidades explícitas do caderno (após mapear G1/XG → XGG). */
+const COUNTED = {
+  'Camisa|Masculino|Oversized Tradicional|off|G': 3,
+  'Camisa|Masculino|Oversized Tradicional|off|GG': 7,
+  'Camisa|Masculino|Oversized Tradicional|off|XGG': 3,
+  'Camisa|Masculino|Oversized Tradicional|blk|M': 4,
+  'Camisa|Masculino|Oversized Tradicional|blk|G': 9,
+  'Camisa|Masculino|Oversized Tradicional|blk|GG': 3,
+  'Camisa|Masculino|Oversized Tradicional|blk|XGG': 5,
+  'Regata|Unissex|Machão|off|P': 3,
+  'Regata|Unissex|Machão|off|M': 4,
+  'Regata|Unissex|Machão|off|GG': 3,
+  'Regata|Unissex|Machão|off|XGG': 1,
+  'Regata|Unissex|Machão|blk|P': 3,
+  'Regata|Unissex|Machão|blk|M': 2,
+  'Regata|Unissex|Machão|blk|G': 2,
+  'Regata|Unissex|Machão|blk|GG': 2,
+  'Regata|Unissex|Machão|blk|XGG': 2,
+  'Camisa|Feminino|Cropped Oversized|off|P': 1,
+  'Camisa|Feminino|Cropped Oversized|off|M': 1,
+  'Camisa|Feminino|Cropped Oversized|blk|G': 2,
+};
 
-  { category: 'Regata', gender: GENDER_NEUTRAL, model: 'Machão', color_key: 'off', size: 'P', quantity: 3 },
-  { category: 'Regata', gender: GENDER_NEUTRAL, model: 'Machão', color_key: 'off', size: 'M', quantity: 4 },
-  { category: 'Regata', gender: GENDER_NEUTRAL, model: 'Machão', color_key: 'off', size: 'GG', quantity: 3 },
-  { category: 'Regata', gender: GENDER_NEUTRAL, model: 'Machão', color_key: 'off', size: 'XG', quantity: 1 },
-
-  { category: 'Regata', gender: GENDER_NEUTRAL, model: 'Machão', color_key: 'blk', size: 'P', quantity: 3 },
-  { category: 'Regata', gender: GENDER_NEUTRAL, model: 'Machão', color_key: 'blk', size: 'M', quantity: 2 },
-  { category: 'Regata', gender: GENDER_NEUTRAL, model: 'Machão', color_key: 'blk', size: 'G', quantity: 2 },
-  { category: 'Regata', gender: GENDER_NEUTRAL, model: 'Machão', color_key: 'blk', size: 'GG', quantity: 2 },
-  { category: 'Regata', gender: GENDER_NEUTRAL, model: 'Machão', color_key: 'blk', size: 'XG', quantity: 2 },
-
-  { category: 'Camisa', gender: 'Feminino', model: 'Cropped Oversized', color_key: 'off', size: 'P', quantity: 1 },
-  { category: 'Camisa', gender: 'Feminino', model: 'Cropped Oversized', color_key: 'off', size: 'M', quantity: 1 },
-  { category: 'Camisa', gender: 'Feminino', model: 'Cropped Oversized', color_key: 'blk', size: 'G', quantity: 2 },
+const LINES = [
+  {
+    category: 'Camisa',
+    gender: 'Masculino',
+    model: 'Oversized Tradicional',
+    colorKeys: ['off', 'blk'],
+    sizes: SIZES_FULL,
+  },
+  {
+    category: 'Regata',
+    gender: GENDER_NEUTRAL,
+    model: 'Machão',
+    colorKeys: ['off', 'blk'],
+    sizes: SIZES_FULL,
+  },
+  {
+    category: 'Camisa',
+    gender: 'Feminino',
+    model: 'Cropped Oversized',
+    colorKeys: ['off', 'blk'],
+    sizes: SIZES_CROPPED,
+  },
 ];
+
+function buildPhysicalStockEntries() {
+  const entries = [];
+  for (const line of LINES) {
+    for (const color_key of line.colorKeys) {
+      for (const size of line.sizes) {
+        const key = `${line.category}|${line.gender}|${line.model}|${color_key}|${size}`;
+        entries.push({
+          category: line.category,
+          gender: line.gender,
+          model: line.model,
+          color_key,
+          size,
+          quantity: COUNTED[key] ?? 0,
+        });
+      }
+    }
+  }
+  return entries;
+}
+
+const PHYSICAL_STOCK_ENTRIES = buildPhysicalStockEntries();
 
 function buildPhysicalStockRows() {
   return PHYSICAL_STOCK_ENTRIES.map((entry) => {
@@ -56,7 +104,7 @@ function buildPhysicalStockRows() {
       color_hex: color.hex,
       size: entry.size,
       quantity: entry.quantity,
-      min_stock: 1,
+      min_stock: entry.quantity > 0 ? 1 : 0,
       unit_cost: UNIT_COST_BY_CATEGORY[entry.category] || 0,
       sku: generateSKU(
         entry.category,
@@ -86,6 +134,8 @@ function isPhysicalStockItem(row) {
 }
 
 module.exports = {
+  SIZES_FULL,
+  SIZES_CROPPED,
   PHYSICAL_STOCK_ENTRIES,
   buildPhysicalStockRows,
   isPhysicalStockItem,

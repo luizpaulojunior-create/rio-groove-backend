@@ -1,8 +1,10 @@
 const { normalizeTagsField } = require('./normalizeTags');
 
-/** Acréscimo do tamanho G1 em camisas Oversized masculinas (BRL). */
-const MASCULINO_OVERSIZED_G1_SURCHARGE_BRL = 15;
+/** Acréscimo do tamanho XGG (legado G1) em camisas Oversized masculinas (BRL). */
+const MASCULINO_OVERSIZED_XGG_SURCHARGE_BRL = 15;
+const MASCULINO_OVERSIZED_G1_SURCHARGE_BRL = MASCULINO_OVERSIZED_XGG_SURCHARGE_BRL;
 const MASCULINO_OVERSIZED_MODEL = 'Oversized Tradicional';
+const LARGE_SIZE_ALIASES = new Set(['XGG', 'G1', 'XG']);
 
 function getTagValue(tags, prefix) {
   for (const tag of normalizeTagsField(tags)) {
@@ -24,13 +26,18 @@ function isMasculinoOversizedTradicionalProduct(product) {
   );
 }
 
+function isLargeApparelSize(size) {
+  return LARGE_SIZE_ALIASES.has(String(size || '').trim().toUpperCase());
+}
+
 function getG1SizeSurcharge(product, size) {
-  if (String(size || '').trim().toUpperCase() !== 'G1') return 0;
+  if (!isLargeApparelSize(size)) return 0;
   if (!isMasculinoOversizedTradicionalProduct(product)) return 0;
-  return MASCULINO_OVERSIZED_G1_SURCHARGE_BRL;
+  return MASCULINO_OVERSIZED_XGG_SURCHARGE_BRL;
 }
 
 module.exports = {
+  MASCULINO_OVERSIZED_XGG_SURCHARGE_BRL,
   MASCULINO_OVERSIZED_G1_SURCHARGE_BRL,
   isMasculinoOversizedTradicionalProduct,
   getG1SizeSurcharge,
