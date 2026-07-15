@@ -45,72 +45,7 @@ app.listen(env.port, () => {
       console.error('[BOOT] Insumo cost config failed:', error.message);
     });
 
-  // One-shot: aplica o estoque físico do caderno uma única vez por release token.
-  // Não reexecuta em restarts posteriores (evita sobrescrever baixas de venda).
-  (async () => {
-    const releaseToken = 'physical-stock-2026-07-15-xgg';
-    try {
-      const supabase = require('./lib/supabase');
-      const { data: already } = await supabase
-        .from('webhook_events')
-        .select('id')
-        .eq('provider', 'system')
-        .eq('topic', 'physical_stock_sync')
-        .eq('resource_id', releaseToken)
-        .maybeSingle();
-
-      if (already) {
-        console.log('[BOOT] Physical stock sync já aplicado:', releaseToken);
-      } else {
-        const { syncPhysicalStock } = require('./services/stock.service');
-        const result = await syncPhysicalStock();
-        console.log('[BOOT] Physical stock sync:', result.message);
-
-        await supabase.from('webhook_events').upsert({
-          provider: 'system',
-          topic: 'physical_stock_sync',
-          action: 'completed',
-          resource_id: releaseToken,
-          payload: result,
-          processed_at: new Date().toISOString(),
-        }, { onConflict: 'provider,topic,resource_id' });
-      }
-    } catch (error) {
-      console.error('[BOOT] Physical stock sync failed:', error.message);
-    }
-
-    const sizeToken = 'product-size-g1-to-xgg-2026-07-15';
-    try {
-      const supabase = require('./lib/supabase');
-      const { data: already } = await supabase
-        .from('webhook_events')
-        .select('id')
-        .eq('provider', 'system')
-        .eq('topic', 'product_size_g1_to_xgg')
-        .eq('resource_id', sizeToken)
-        .maybeSingle();
-
-      if (already) {
-        console.log('[BOOT] Product size G1→XGG já aplicado:', sizeToken);
-        return;
-      }
-
-      const { renameProductVariantG1ToXgg } = require('./services/productSizeMigration.service');
-      const result = await renameProductVariantG1ToXgg();
-      console.log('[BOOT] Product size migration:', result.message);
-
-      await supabase.from('webhook_events').upsert({
-        provider: 'system',
-        topic: 'product_size_g1_to_xgg',
-        action: 'completed',
-        resource_id: sizeToken,
-        payload: result,
-        processed_at: new Date().toISOString(),
-      }, { onConflict: 'provider,topic,resource_id' });
-    } catch (error) {
-      console.error('[BOOT] Product size G1→XGG failed:', error.message);
-    }
-  })();
-
+  // Mutações de estoque/catálogo (sync físico, G1→XGG) só via scripts manuais
+  // ou POST admin autenticado — nunca no boot do Render.
   startMelhorEnvioTrackingSyncScheduler();
 });

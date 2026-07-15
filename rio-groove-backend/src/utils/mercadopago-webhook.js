@@ -3,15 +3,15 @@ const env = require('../config/env');
 
 /**
  * Verifica x-signature do Mercado Pago quando MERCADO_PAGO_WEBHOOK_SECRET está configurado.
- * Se o secret não existir, retorna true (compatibilidade — configure o secret em produção).
+ * Skip só em NODE_ENV=test (suite). Em production o boot exige o secret.
  */
 function verifyMercadoPagoWebhookSignature(req) {
   const secret = env.mercadoPagoWebhookSecret;
   if (!secret) {
-    if (env.nodeEnv === 'production') {
-      return { valid: false, reason: 'MERCADO_PAGO_WEBHOOK_SECRET não configurado.' };
+    if (env.nodeEnv === 'test') {
+      return { valid: true, skipped: true };
     }
-    return { valid: true, skipped: true };
+    return { valid: false, reason: 'MERCADO_PAGO_WEBHOOK_SECRET não configurado.' };
   }
 
   const xSignature = req.headers['x-signature'];

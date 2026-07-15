@@ -54,26 +54,52 @@ const createStockItem = async (stockData) => {
   return data;
 };
 
-const updateStockItem = async (id, stockData) => {
-  const payload = { ...stockData };
+const STOCK_UPDATE_ALLOWED_FIELDS = new Set([
+  'category',
+  'gender',
+  'model',
+  'fabric',
+  'color_key',
+  'color_label',
+  'color_hex',
+  'size',
+  'quantity',
+  'min_stock',
+  'unit_cost',
+  'sku',
+  'is_active',
+]);
+
+const updateStockItem = async (id, stockData = {}) => {
+  const source = { ...stockData };
+  if (source.stock !== undefined) {
+    source.quantity = source.stock;
+    delete source.stock;
+  }
+  if (source.cost !== undefined) {
+    source.unit_cost = source.cost;
+    delete source.cost;
+  }
+  if (source.active !== undefined) {
+    source.is_active = source.active;
+    delete source.active;
+  }
+
+  const payload = {};
+  for (const key of STOCK_UPDATE_ALLOWED_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(source, key) && source[key] !== undefined) {
+      payload[key] = source[key];
+    }
+  }
+
   if (payload.category) {
     payload.category = normalizeCategory(payload.category);
   }
-  if (payload.stock !== undefined) {
-    payload.quantity = payload.stock;
-    delete payload.stock;
+
+  if (Object.keys(payload).length === 0) {
+    throw new Error('Nenhum campo permitido para atualização.');
   }
-  if (payload.cost !== undefined) {
-    payload.unit_cost = payload.cost;
-    delete payload.cost;
-  }
-  if (payload.active !== undefined) {
-    payload.is_active = payload.active;
-    delete payload.active;
-  }
-  delete payload.images;
-  delete payload.stock_images;
-  
+
   const { data, error } = await supabase.from('stock_items').update(payload).eq('id', id).select('*').single();
   if (error) throw error;
   return data;

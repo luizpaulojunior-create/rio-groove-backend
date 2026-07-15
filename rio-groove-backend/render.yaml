@@ -32,6 +32,8 @@ services:
         sync: false
       - key: MERCADO_PAGO_WEBHOOK_SECRET
         sync: false
+      - key: MELHOR_ENVIO_CLIENT_SECRET
+        sync: false
       - key: STATEMENT_DESCRIPTOR
         value: RIO GROOVE
       - key: DEFAULT_CURRENCY

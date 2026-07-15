@@ -4,10 +4,10 @@ const env = require('../config/env');
 function verifyMelhorEnvioWebhookSignature(req) {
   const secret = env.melhorEnvioClientSecret;
   if (!secret) {
-    if (env.nodeEnv === 'production') {
-      return { valid: false, reason: 'MELHOR_ENVIO_CLIENT_SECRET não configurado.' };
+    if (env.nodeEnv === 'test') {
+      return { valid: true, skipped: true };
     }
-    return { valid: true, skipped: true };
+    return { valid: false, reason: 'MELHOR_ENVIO_CLIENT_SECRET não configurado.' };
   }
 
   const signature = req.headers['x-me-signature'];

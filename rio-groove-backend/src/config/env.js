@@ -69,8 +69,15 @@ const required = [
   ['SUPABASE_URL', env.supabaseUrl],
   ['SUPABASE_SERVICE_ROLE_KEY', env.supabaseServiceRoleKey],
   ['MERCADO_PAGO_PUBLIC_KEY', env.mercadoPagoPublicKey],
-  ['MERCADO_PAGO_ACCESS_TOKEN', env.mercadoPagoAccessToken]
+  ['MERCADO_PAGO_ACCESS_TOKEN', env.mercadoPagoAccessToken],
 ];
+
+if (env.nodeEnv === 'production') {
+  required.push(
+    ['MERCADO_PAGO_WEBHOOK_SECRET', env.mercadoPagoWebhookSecret],
+    ['MELHOR_ENVIO_CLIENT_SECRET', env.melhorEnvioClientSecret],
+  );
+}
 
 const missing = required.filter(([, value]) => !value).map(([key]) => key);
 

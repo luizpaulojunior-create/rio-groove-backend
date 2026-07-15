@@ -5,8 +5,8 @@ const ROLE_RANK = {
 };
 
 function normalizeRole(role) {
-  const key = String(role || 'editor').toLowerCase();
-  return ROLE_RANK[key] ? key : 'editor';
+  const key = String(role || '').toLowerCase().trim();
+  return ROLE_RANK[key] ? key : 'viewer';
 }
 
 function hasMinRole(userRole, minRole) {
