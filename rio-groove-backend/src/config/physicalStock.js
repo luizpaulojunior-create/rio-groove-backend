@@ -1,5 +1,5 @@
 /**
- * Manifesto do estoque físico real (caderno jul/2026).
+ * Manifesto do estoque físico real (contagem ago/2026).
  * Camisa = Oversized Tradicional → P, M, G, GG, XGG
  * Regata = Machão → P, M, G, GG, XGG
  * Cropped = Cropped Oversized → P, M, G (somente)
@@ -21,25 +21,29 @@ const SIZES_CROPPED = ['P', 'M', 'G'];
 
 /** Quantidades explícitas do caderno (após mapear G1/XG → XGG). */
 const COUNTED = {
-  'Camisa|Masculino|Oversized Tradicional|off|G': 3,
-  'Camisa|Masculino|Oversized Tradicional|off|GG': 7,
+  'Camisa|Masculino|Oversized Tradicional|off|M': 4,
+  'Camisa|Masculino|Oversized Tradicional|off|G': 6,
+  'Camisa|Masculino|Oversized Tradicional|off|GG': 3,
   'Camisa|Masculino|Oversized Tradicional|off|XGG': 3,
+  'Camisa|Masculino|Oversized Tradicional|blk|P': 5,
   'Camisa|Masculino|Oversized Tradicional|blk|M': 4,
-  'Camisa|Masculino|Oversized Tradicional|blk|G': 9,
+  'Camisa|Masculino|Oversized Tradicional|blk|G': 7,
   'Camisa|Masculino|Oversized Tradicional|blk|GG': 3,
   'Camisa|Masculino|Oversized Tradicional|blk|XGG': 5,
-  'Regata|Unissex|Machão|off|P': 3,
-  'Regata|Unissex|Machão|off|M': 4,
-  'Regata|Unissex|Machão|off|GG': 3,
+  'Regata|Unissex|Machão|off|P': 7,
+  'Regata|Unissex|Machão|off|M': 5,
+  'Regata|Unissex|Machão|off|G': 1,
+  'Regata|Unissex|Machão|off|GG': 6,
   'Regata|Unissex|Machão|off|XGG': 1,
-  'Regata|Unissex|Machão|blk|P': 3,
-  'Regata|Unissex|Machão|blk|M': 2,
-  'Regata|Unissex|Machão|blk|G': 2,
-  'Regata|Unissex|Machão|blk|GG': 2,
-  'Regata|Unissex|Machão|blk|XGG': 2,
-  'Camisa|Feminino|Cropped Oversized|off|P': 1,
-  'Camisa|Feminino|Cropped Oversized|off|M': 1,
-  'Camisa|Feminino|Cropped Oversized|blk|G': 2,
+  'Regata|Unissex|Machão|blk|P': 4,
+  'Regata|Unissex|Machão|blk|M': 4,
+  'Regata|Unissex|Machão|blk|G': 7,
+  'Regata|Unissex|Machão|blk|XGG': 1,
+  'Camisa|Feminino|Cropped Oversized|off|P': 4,
+  'Camisa|Feminino|Cropped Oversized|off|M': 2,
+  'Camisa|Feminino|Cropped Oversized|blk|P': 2,
+  'Camisa|Feminino|Cropped Oversized|blk|M': 2,
+  'Camisa|Feminino|Cropped Oversized|blk|G': 3,
 };
 
 const LINES = [

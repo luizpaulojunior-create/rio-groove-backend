@@ -6,6 +6,7 @@ const env = require('./config/env');
 const { testResend } = require('./services/notifications.service');
 const { loadInsumoCostConfig } = require('./services/insumoCosts.service');
 const { startMelhorEnvioTrackingSyncScheduler } = require('./services/melhorEnvioTrackingSync.service');
+const { startWeeklyStockReportScheduler } = require('./services/weeklyStockReport.service');
 
 console.log('[BOOT] Iniciando servidor...');
 console.log('[BOOT] Rotas de shipping carregadas');
@@ -48,4 +49,5 @@ app.listen(env.port, () => {
   // Mutações de estoque/catálogo (sync físico, G1→XGG) só via scripts manuais
   // ou POST admin autenticado — nunca no boot do Render.
   startMelhorEnvioTrackingSyncScheduler();
+  startWeeklyStockReportScheduler();
 });

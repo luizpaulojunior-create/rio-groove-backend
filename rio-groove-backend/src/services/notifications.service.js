@@ -530,6 +530,7 @@ async function testResend() {
 }
 
 module.exports = {
+  sendEmail,
   sendOrderTrackingNotification,
   sendPickupNotification,
   sendAdminNotification,
