@@ -179,8 +179,65 @@ function validateOrderReferencePayload(body = {}) {
   };
 }
 
+const POS_PAYMENT_METHODS = new Set(['pix', 'cash', 'card']);
+
+function validatePosSalePayload(body = {}) {
+  const errors = [];
+  const items = Array.isArray(body.items) ? body.items.map(normalizeItem) : [];
+
+  if (!items.length) {
+    errors.push('Informe pelo menos um item da venda.');
+  }
+
+  items.forEach((item, index) => {
+    if (!item.productName) errors.push(`Item ${index + 1}: estampa obrigatória.`);
+    if (!Number.isInteger(item.quantity) || item.quantity < 1) {
+      errors.push(`Item ${index + 1}: quantidade inválida.`);
+    }
+    if (item.unitPrice <= 0) errors.push(`Item ${index + 1}: preço inválido.`);
+    if (!item.size) errors.push(`Item ${index + 1}: tamanho obrigatório.`);
+    if (!item.color) errors.push(`Item ${index + 1}: cor obrigatória.`);
+
+    const stockItemId = normalizeString(
+      item.raw?.stockItemId || item.raw?.stock_item_id || body.items?.[index]?.stockItemId,
+    );
+    if (!item.sku && !stockItemId) {
+      errors.push(`Item ${index + 1}: informe o SKU do blank (estoque).`);
+    }
+  });
+
+  const paymentMethodRaw = normalizeString(body.paymentMethod || body.payment_method || 'pix').toLowerCase();
+  const paymentMethod = POS_PAYMENT_METHODS.has(paymentMethodRaw) ? paymentMethodRaw : null;
+  if (!paymentMethod) {
+    errors.push('Forma de pagamento inválida. Use pix, cash ou card.');
+  }
+
+  const fairName = normalizeString(body.fairName || body.fair_name || body.eventName);
+  const notes = normalizeString(body.notes);
+  const customerName = normalizeString(body.customerName || body.customer?.name) || 'Cliente Feira';
+
+  const subtotal = roundMoney(items.reduce((sum, item) => sum + item.lineTotal, 0));
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    data: {
+      items,
+      paymentMethod,
+      fairName,
+      notes,
+      customerName,
+      subtotal,
+      total: subtotal,
+      rawPayload: body,
+    },
+  };
+}
+
 module.exports = {
   validateCheckoutPayload,
   validateShippingQuotePayload,
-  validateOrderReferencePayload
+  validateOrderReferencePayload,
+  validatePosSalePayload,
+  POS_PAYMENT_METHODS,
 };

@@ -56,6 +56,14 @@ async function loadActiveStockItems() {
 }
 
 function findStockMatch(stockItems, item) {
+  const stockId = String(
+    item.stockItemId || item.stock_item_id || item.raw?.stockItemId || item.raw?.stock_item_id || '',
+  ).trim();
+  if (stockId) {
+    const byId = stockItems.find((row) => String(row.id) === stockId);
+    if (byId) return byId;
+  }
+
   const sku = String(item.sku || item.raw?.sku || '').trim().toUpperCase();
   const size = normalizeSize(item.size);
 
@@ -230,4 +238,5 @@ module.exports = {
   restoreStockForOrder,
   findStockMatch,
   isStockManagedItem,
+  loadActiveStockItems,
 };
