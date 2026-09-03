@@ -73,6 +73,16 @@ function isMissingSeoColumnError(error) {
   return SEO_FIELDS.some((field) => msg.includes(field) && msg.includes('schema cache'));
 }
 
+async function insertProductImages(imagesToInsert) {
+  if (!imagesToInsert.length) return;
+  let { error } = await supabase.from('product_images').insert(imagesToInsert);
+  if (error && /color_key/i.test(String(error.message || ''))) {
+    const withoutKey = imagesToInsert.map(({ color_key, ...row }) => row);
+    ({ error } = await supabase.from('product_images').insert(withoutKey));
+  }
+  if (error) throw error;
+}
+
 function buildImageRow(img, productId, index) {
   const colorKey = img.color_key ? String(img.color_key).trim().toLowerCase() : null;
   const colorVariant =
@@ -83,6 +93,7 @@ function buildImageRow(img, productId, index) {
   return {
     image_url: img.image_url || img.url || img.preview,
     alt_text: img.alt_text || '',
+    color_key: colorKey || null,
     color_variant: colorVariant || null,
     product_id: productId,
     sort_order: img.sort_order ?? img.position ?? index,
@@ -153,7 +164,7 @@ async function createProduct(productData) {
   
   if (images && images.length > 0) {
     const imagesToInsert = images.map((img, index) => buildImageRow(img, data.id, index));
-    await supabase.from('product_images').insert(imagesToInsert);
+    await insertProductImages(imagesToInsert);
   }
 
   if (variants && variants.length > 0) {
@@ -214,7 +225,7 @@ async function updateProduct(id, updates) {
     await supabase.from('product_images').delete().eq('product_id', id);
     if (images.length > 0) {
       const imagesToInsert = images.map((img, index) => buildImageRow(img, id, index));
-      await supabase.from('product_images').insert(imagesToInsert);
+      await insertProductImages(imagesToInsert);
     }
   }
 

@@ -36,18 +36,21 @@ function sortImagesForSave(images) {
 async function appendUploadedImages(images, files, fileMeta, productName) {
   if (!files?.length) return images;
 
-  for (let i = 0; i < files.length; i++) {
-    const meta = fileMeta[i] || {};
-    const publicUrl = await uploadService.uploadImage(files[i], STORAGE_BUCKET, STORAGE_PATHS.PRODUCTS);
-    images.push({
-      image_url: publicUrl,
-      alt_text: productName || '',
-      color_key: meta.color_key || undefined,
-      sort_order: meta.sort_order ?? images.length,
-      isMain: Boolean(meta.isMain),
-    });
-  }
+  const uploaded = await Promise.all(
+    files.map(async (file, i) => {
+      const meta = fileMeta[i] || {};
+      const publicUrl = await uploadService.uploadImage(file, STORAGE_BUCKET, STORAGE_PATHS.PRODUCTS);
+      return {
+        image_url: publicUrl,
+        alt_text: productName || '',
+        color_key: meta.color_key || undefined,
+        sort_order: meta.sort_order ?? images.length + i,
+        isMain: Boolean(meta.isMain),
+      };
+    }),
+  );
 
+  images.push(...uploaded);
   return images;
 }
 
