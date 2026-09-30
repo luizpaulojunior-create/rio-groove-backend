@@ -17,6 +17,12 @@ const checkoutLimiter = createLimiter({
   message: 'Muitas tentativas de checkout. Aguarde alguns minutos.',
 });
 
+const checkoutPayLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 40,
+  message: 'Muitas tentativas de pagamento. Aguarde alguns minutos.',
+});
+
 const shippingQuoteLimiter = createLimiter({
   windowMs: 15 * 60 * 1000,
   max: 40,
@@ -73,6 +79,7 @@ const customerAuthLimiter = createLimiter({
 
 module.exports = {
   checkoutLimiter,
+  checkoutPayLimiter,
   shippingQuoteLimiter,
   orderStatusLimiter,
   webhookLimiter,

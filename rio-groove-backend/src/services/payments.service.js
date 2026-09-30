@@ -236,6 +236,33 @@ async function applyMercadoPagoPaymentUpdate(payment, merchantOrder = null, opti
     };
   }
 
+  const checkoutMode = String(
+    metadata.checkout_mode || payment?.metadata?.checkout_mode || ''
+  ).toLowerCase();
+  const isBrickCardDecline =
+    checkoutMode === 'brick' &&
+    String(payment.status || '').toLowerCase() === 'rejected';
+
+  // Recusa no Brick não cancela o pedido nem devolve a reserva: o cliente tenta outro cartão
+  // no mesmo pedido. Reembolso e chargeback continuam no fluxo normal.
+  if (isBrickCardDecline && !alreadyPaid) {
+    const updatedOrder = await updateOrderByExternalReference(existingOrder.external_reference, {
+      mercado_pago_status: payment.status || null,
+      mercado_pago_status_detail: payment.status_detail || null,
+      payment_payload: payment,
+    });
+    if (!options.skipRaceGuard) processingWebhooks.delete(externalReference);
+    return {
+      ignored: false,
+      declined: true,
+      retryable: true,
+      order: updatedOrder,
+      paymentId: payment.id,
+      paymentStatus: payment.status,
+      statusDetail: payment.status_detail || null,
+    };
+  }
+
   const orderUpdates = {
     mercado_pago_payment_id: payment.id ? String(payment.id) : existingOrder.mercado_pago_payment_id,
     mercado_pago_merchant_order_id: payment.order?.id ? String(payment.order.id) : existingOrder.mercado_pago_merchant_order_id,
@@ -695,6 +722,7 @@ async function reconcileCustomOrderPaymentReturn({ orderId, paymentId, user = nu
 module.exports = {
   extractNotificationInfo,
   processMercadoPagoWebhook,
+  applyMercadoPagoPaymentUpdate,
   reconcileMercadoPagoReturn,
   reconcileCustomOrderPaymentReturn,
   fetchPaymentDetails,
