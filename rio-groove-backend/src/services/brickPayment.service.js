@@ -6,7 +6,7 @@ const { isOrderPaid } = require('../utils/orderFulfillment');
 const { getMercadoPagoNotificationUrl } = require('../utils/checkout-urls');
 const { getOrderWithItems, updateOrderById } = require('./orders.service');
 const { restoreStockForOrder } = require('./stockCheckout.service');
-const { applyMercadoPagoPaymentUpdate } = require('./payments.service');
+const { applyMercadoPagoPaymentUpdate, fetchPaymentDetails } = require('./payments.service');
 
 const OPEN_PAYMENT_STATUSES = new Set(['pending', 'in_process', 'in_mediation', 'approved', 'authorized']);
 
@@ -88,8 +88,31 @@ function buildPaymentBody(order, formData) {
   return body;
 }
 
+function readPixTransaction(payment) {
+  return payment?.point_of_interaction?.transaction_data || {};
+}
+
+function hasPixPayload(payment) {
+  const transaction = readPixTransaction(payment);
+  return Boolean(transaction.qr_code || transaction.qr_code_base64);
+}
+
+async function ensurePixPayload(payment) {
+  if (hasPixPayload(payment) || !payment?.id) return payment;
+  const status = String(payment.status || '').toLowerCase();
+  if (!['pending', 'in_process'].includes(status)) return payment;
+
+  try {
+    const fresh = await fetchPaymentDetails(payment.id);
+    return fresh || payment;
+  } catch (error) {
+    console.error('[Checkout Brick] Falha ao buscar QR Pix', error.message);
+    return payment;
+  }
+}
+
 function publicPaymentResult(order, payment) {
-  const transaction = payment?.point_of_interaction?.transaction_data || {};
+  const transaction = readPixTransaction(payment);
   return {
     paymentId: payment?.id ? String(payment.id) : null,
     status: payment?.status || null,
@@ -146,7 +169,8 @@ async function payCheckoutWithBrick({ orderId, formData, idempotencyKey }) {
     console.error('[Checkout Brick] Pagamento criado, falha ao aplicar no pedido', error.message);
   }
 
-  return publicPaymentResult(order, payment);
+  const withPix = await ensurePixPayload(payment);
+  return publicPaymentResult(order, withPix);
 }
 
 async function abandonUnpaidCheckout({ orderId }) {
