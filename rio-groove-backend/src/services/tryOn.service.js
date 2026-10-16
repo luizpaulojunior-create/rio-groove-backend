@@ -5,15 +5,19 @@ const OPENAI_EDITS_URL = 'https://api.openai.com/v1/images/edits';
 const MAX_GARMENT_BYTES = 20 * 1024 * 1024;
 
 const TRY_ON_PROMPT = [
-  'Photorealistic virtual try-on for an ecommerce product page.',
-  'Image 1 is the customer. Keep the same identity, face, skin, hair, body, tattoos, pose, camera angle and background.',
-  'Image 2 is the official product photo of the garment hanging on a hanger. Use that hanging shirt as the only clothing reference.',
-  'If a person appears in image 2, ignore them. Copy only the hanging garment and its chest print onto the person in image 1.',
-  'Put the exact same garment from image 2 onto the person in image 1.',
-  'Reproduce the chest print with high fidelity: same illustration, same lettering, same colors, same layout. Do not redraw, restyle, simplify, or invent artwork.',
-  'The print must stay fully visible and readable. No extra logos, extra text, extra accessories, or a different garment.',
-  'Natural fabric drape only. No watermark.',
+  'Photorealistic ecommerce virtual try-on.',
+  'Image 1 is the customer photo. Do not change their face, facial features, skin, hair, body, pose, identity, background, camera angle, or framing.',
+  'Images 2 and 3 are the same official product photo of the garment hanging on a hanger. Ignore any person in those photos. Use only the hanging garment.',
+  'Completely replace whatever the customer is wearing. Do not keep, blend, or reuse any print, logo, or artwork from the original clothes in image 1.',
+  'Dress the customer in that hanging garment with realistic drape, folds, occlusion, and lighting. It must look worn, not pasted.',
+  'The chest print is the product. Copy it exactly from the hanging garment: the same illustration, the same face in the artwork, the same lettering, spelling, colors, and layout.',
+  'Do not redraw, restyle, simplify, or invent artwork. Do not change the face of anyone depicted in the print.',
+  'No extra logos, extra text, extra accessories, different garment, or watermark.',
 ].join(' ');
+
+function supportsInputFidelity(model) {
+  return model === 'gpt-image-1' || model === 'gpt-image-1.5';
+}
 
 function isTryOnConfigured() {
   return Boolean(env.openaiApiKey);
@@ -115,7 +119,8 @@ async function runVirtualTryOn({ personBuffer, personMime, garmentImageUrl }) {
   form.append('quality', env.openaiImageQuality);
   form.append('size', '1024x1536');
   form.append('output_format', 'jpeg');
-  if (env.openaiImageModel !== 'gpt-image-1-mini') {
+  form.append('output_compression', '90');
+  if (supportsInputFidelity(env.openaiImageModel)) {
     form.append('input_fidelity', 'high');
   }
   form.append(
@@ -124,9 +129,14 @@ async function runVirtualTryOn({ personBuffer, personMime, garmentImageUrl }) {
       type: personType,
     }),
   );
+  const garmentName = `garment.${extensionForMime(garment.mime)}`;
   form.append(
     'image[]',
-    new File([Uint8Array.from(garment.buffer)], `garment.${extensionForMime(garment.mime)}`, {
+    new File([Uint8Array.from(garment.buffer)], garmentName, { type: garment.mime }),
+  );
+  form.append(
+    'image[]',
+    new File([Uint8Array.from(garment.buffer)], `garment-ref.${extensionForMime(garment.mime)}`, {
       type: garment.mime,
     }),
   );

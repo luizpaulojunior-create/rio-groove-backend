@@ -36,6 +36,10 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+      - key: OPENAI_IMAGE_MODEL
+        value: gpt-image-1.5
+      - key: OPENAI_IMAGE_QUALITY
+        value: high
       - key: STATEMENT_DESCRIPTOR
         value: RIO GROOVE
       - key: DEFAULT_CURRENCY
