@@ -6,11 +6,11 @@ const MAX_GARMENT_BYTES = 20 * 1024 * 1024;
 
 const TRY_ON_PROMPT = [
   'Photorealistic virtual try-on for an ecommerce product page.',
-  'Image 1 is the customer photo. Keep the same person, face, skin, hair, body, pose, camera angle and background.',
-  'Image 2 is the clothing item (t-shirt, tank or cropped tee) with its artwork.',
-  'Dress the person from image 1 in the exact garment from image 2.',
-  'The print, colors, lettering and illustration must stay identical and fully visible on the chest.',
-  'Do not invent extra logos, extra text, extra accessories, or a different garment.',
+  'Image 1 is the customer. Keep the same identity, face, skin, hair, body, tattoos, pose, camera angle and background.',
+  'Image 2 is the product photo of the garment. If a model appears in image 2, ignore that person completely. Copy only the clothes.',
+  'Put the exact same garment from image 2 onto the person in image 1.',
+  'Reproduce the chest print with high fidelity: same illustration, same lettering, same colors, same layout. Do not redraw, restyle, simplify, or invent artwork.',
+  'The print must stay fully visible and readable. No extra logos, extra text, extra accessories, or a different garment.',
   'Natural fabric drape only. No watermark.',
 ].join(' ');
 
