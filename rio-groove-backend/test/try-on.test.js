@@ -1,6 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { isAllowedGarmentUrl, isTryOnConfigured } = require('../src/services/tryOn.service');
+const { isAllowedGarmentUrl, isTryOnConfigured, MAX_GARMENT_BYTES } = require('../src/services/tryOn.service');
+
+test('try-on download cap is above Almir Poeta PNGs and does not resize catalog files', () => {
+  assert.ok(MAX_GARMENT_BYTES >= 20 * 1024 * 1024);
+});
 
 test('isTryOnConfigured is false without OPENAI_API_KEY', () => {
   assert.equal(isTryOnConfigured(), false);

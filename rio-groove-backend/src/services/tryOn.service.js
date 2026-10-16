@@ -1,7 +1,8 @@
 const env = require('../config/env');
 
 const OPENAI_EDITS_URL = 'https://api.openai.com/v1/images/edits';
-const MAX_GARMENT_BYTES = 8 * 1024 * 1024;
+/** Cap only for the temporary copy sent to OpenAI. Catalog images on the store are never resized. */
+const MAX_GARMENT_BYTES = 20 * 1024 * 1024;
 
 const TRY_ON_PROMPT = [
   'Photorealistic virtual try-on for an ecommerce product page.',
@@ -149,6 +150,7 @@ async function runVirtualTryOn({ personBuffer, personMime, garmentImageUrl }) {
 module.exports = {
   isTryOnConfigured,
   isAllowedGarmentUrl,
+  MAX_GARMENT_BYTES,
   runVirtualTryOn,
   runFashnTryOn: runVirtualTryOn,
 };
