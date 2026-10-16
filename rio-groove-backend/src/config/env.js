@@ -61,6 +61,10 @@ const env = {
   ga4MeasurementId: process.env.GA4_MEASUREMENT_ID || '',
   ga4ApiSecret: process.env.GA4_API_SECRET || '',
   ga4PropertyId: process.env.GA4_PROPERTY_ID || '',
+  fashnApiKey: process.env.FASHN_API_KEY || '',
+  openaiApiKey: process.env.OPENAI_API_KEY || process.env.OPEN_AI_API_KEY || '',
+  openaiImageModel: process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1',
+  openaiImageQuality: process.env.OPENAI_IMAGE_QUALITY || 'low',
 };
 
 const required = [

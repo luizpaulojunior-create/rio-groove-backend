@@ -34,6 +34,8 @@ services:
         sync: false
       - key: MELHOR_ENVIO_CLIENT_SECRET
         sync: false
+      - key: OPENAI_API_KEY
+        sync: false
       - key: STATEMENT_DESCRIPTOR
         value: RIO GROOVE
       - key: DEFAULT_CURRENCY

@@ -77,6 +77,12 @@ const customerAuthLimiter = createLimiter({
   message: 'Muitas tentativas de cadastro/login. Aguarde alguns minutos.',
 });
 
+const tryOnLimiter = createLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 8,
+  message: 'Muitos previews gerados. Aguarde alguns minutos.',
+});
+
 module.exports = {
   checkoutLimiter,
   checkoutPayLimiter,
@@ -88,5 +94,6 @@ module.exports = {
   couponValidateLimiter,
   oauthLimiter,
   customerAuthLimiter,
+  tryOnLimiter,
   apiLimiter,
 };
