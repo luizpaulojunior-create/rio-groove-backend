@@ -5,7 +5,7 @@ const { onlyDigits } = require('../utils/order');
 const { isOrderPaid } = require('../utils/orderFulfillment');
 const { getMercadoPagoNotificationUrl } = require('../utils/checkout-urls');
 const { getOrderWithItems, updateOrderById } = require('./orders.service');
-const { restoreStockForOrder } = require('./stockCheckout.service');
+const { reserveStockForOrder, restoreStockForOrder } = require('./stockCheckout.service');
 const { applyMercadoPagoPaymentUpdate, fetchPaymentDetails } = require('./payments.service');
 
 const OPEN_PAYMENT_STATUSES = new Set(['pending', 'in_process', 'in_mediation', 'approved', 'authorized']);
@@ -184,10 +184,37 @@ async function loadPayableOrder(orderId) {
   const order = await getOrderWithItems(ref);
   if (!order) throw httpError('Pedido não encontrado.', 404);
   if (isOrderPaid(order)) throw httpError('Este pedido já foi pago.', 409);
+  await reopenOrderClosedByReplacedPix(order);
   if (!isCheckoutPayable(order)) {
     throw httpError('Este pedido não está mais disponível para pagamento. Confirme a compra de novo.', 409);
   }
   return order;
+}
+
+async function reopenOrderClosedByReplacedPix(order) {
+  if (isCheckoutPayable(order) || isOrderPaid(order)) return;
+  const status = String(order.status || '').toLowerCase();
+  const mpStatus = String(order.mercado_pago_status || '').toLowerCase();
+  if (status !== 'payment_failed') return;
+  if (!['cancelled', 'rejected'].includes(mpStatus)) return;
+  const method = previousPaymentMethod(order);
+  if (method && method !== 'pix' && method !== 'bank_transfer') return;
+
+  const withItems = order.items ? order : await getOrderWithItems(order.id);
+  const items = withItems.items || withItems.order_items || [];
+  try {
+    await reserveStockForOrder(withItems, items);
+  } catch (error) {
+    throw httpError(error.message || 'Não foi possível reservar o estoque de novo.', 409);
+  }
+
+  const updates = {
+    status: 'awaiting_payment',
+    payment_status: 'pending',
+    fulfillment_status: 'aguardando_pagamento',
+  };
+  await updateOrderById(order.id, updates);
+  Object.assign(order, updates);
 }
 
 async function alignOrderWithCheckoutTotal(order, formData) {

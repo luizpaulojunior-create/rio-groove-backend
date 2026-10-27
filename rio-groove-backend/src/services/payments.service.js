@@ -18,7 +18,7 @@ const {
   sendAdminNotification
 } = require('./notifications.service');
 const { mapMercadoPagoPaymentStatus } = require('../utils/order');
-const { deductStockForOrder, restoreStockForOrder } = require('./stockCheckout.service');
+const { deductStockForOrder, reserveStockForOrder, restoreStockForOrder } = require('./stockCheckout.service');
 const { incrementCouponUsage } = require('./coupons.service');
 
 const MP_API_BASE = 'https://api.mercadopago.com';
@@ -260,6 +260,46 @@ async function applyMercadoPagoPaymentUpdate(payment, merchantOrder = null, opti
       paymentId: payment.id,
       paymentStatus: payment.status,
       statusDetail: payment.status_detail || null,
+    };
+  }
+
+  const currentPaymentId = String(existingOrder.mercado_pago_payment_id || '');
+  const incomingPaymentId = payment?.id ? String(payment.id) : '';
+  const stalePayment = Boolean(currentPaymentId && incomingPaymentId && currentPaymentId !== incomingPaymentId);
+  const paymentMethod = String(payment?.payment_method_id || payment?.paymentMethodId || '').toLowerCase();
+  const paymentType = String(payment?.payment_type_id || payment?.paymentTypeId || '').toLowerCase();
+  const replacedPix = ['cancelled', 'rejected'].includes(String(payment.status || '').toLowerCase())
+    && (paymentMethod === 'pix' || paymentType === 'bank_transfer');
+
+  // Cancelar o Pix antigo para gerar outro QR não fecha o pedido nem devolve o estoque.
+  if (!alreadyPaid && !paymentApproved && (stalePayment || replacedPix)) {
+    const orderStatus = String(existingOrder.status || '').toLowerCase();
+    if (!stalePayment && orderStatus !== 'cancelled') {
+      if (orderStatus === 'payment_failed' || existingOrder.fulfillment_status === 'cancelado') {
+        const withItems = await getOrderWithItems(existingOrder.external_reference);
+        await reserveStockForOrder(withItems, withItems.items || []);
+      }
+      await updateOrderByExternalReference(existingOrder.external_reference, {
+        mercado_pago_status: payment.status || null,
+        mercado_pago_status_detail: payment.status_detail || null,
+        payment_payload: payment,
+        status: 'awaiting_payment',
+        payment_status: 'pending',
+        fulfillment_status: 'aguardando_pagamento',
+      });
+    }
+    if (!options.skipRaceGuard) processingWebhooks.delete(externalReference);
+    console.log('[PaymentsService] Pix substituído. Pedido segue aguardando pagamento', {
+      orderId: existingOrder.id,
+      paymentId: incomingPaymentId,
+      stalePayment,
+    });
+    return {
+      ignored: stalePayment,
+      keptOpen: true,
+      order: existingOrder,
+      paymentId: payment.id,
+      paymentStatus: payment.status,
     };
   }
 
