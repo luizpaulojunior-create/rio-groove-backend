@@ -47,8 +47,22 @@ function buildPayer(order, formData) {
   return payer;
 }
 
+function roundMoney(value) {
+  return Number(Number(value || 0).toFixed(2));
+}
+
+function chargeAmount(order) {
+  const stored = roundMoney(order.total_amount);
+  const subtotal = roundMoney(order.subtotal_amount);
+  const discount = roundMoney(order.discount_amount);
+  const shipping = roundMoney(order.shipping_amount);
+  const withoutShipping = [subtotal, roundMoney(subtotal - discount)];
+  const missingShipping = shipping > 0 && withoutShipping.some((value) => Math.abs(stored - value) < 0.05);
+  return missingShipping ? roundMoney(stored + shipping) : stored;
+}
+
 function buildPaymentBody(order, formData) {
-  const amount = Number(Number(order.total_amount).toFixed(2));
+  const amount = chargeAmount(order);
   if (!Number.isFinite(amount) || amount <= 0) {
     throw httpError('Total do pedido inválido.', 400);
   }
@@ -142,6 +156,7 @@ function publicPaymentResult(order, payment) {
     orderId: order.id,
     orderNumber: order.order_number,
     externalReference: order.external_reference,
+    amount: roundMoney(payment?.transaction_amount || payment?.transactionAmount || order.total_amount),
     qrCode: transaction.qr_code || null,
     qrCodeBase64: transaction.qr_code_base64 || null,
     ticketUrl: transaction.ticket_url || null,
