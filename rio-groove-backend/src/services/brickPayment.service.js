@@ -89,7 +89,13 @@ function buildPaymentBody(order, formData) {
 }
 
 function readPixTransaction(payment) {
-  return payment?.point_of_interaction?.transaction_data || {};
+  const interaction = payment?.point_of_interaction || payment?.pointOfInteraction || {};
+  const data = interaction.transaction_data || interaction.transactionData || {};
+  return {
+    qr_code: data.qr_code || data.qrCode || null,
+    qr_code_base64: data.qr_code_base64 || data.qrCodeBase64 || null,
+    ticket_url: data.ticket_url || data.ticketUrl || null,
+  };
 }
 
 function hasPixPayload(payment) {
@@ -97,18 +103,34 @@ function hasPixPayload(payment) {
   return Boolean(transaction.qr_code || transaction.qr_code_base64);
 }
 
-async function ensurePixPayload(payment) {
-  if (hasPixPayload(payment) || !payment?.id) return payment;
-  const status = String(payment.status || '').toLowerCase();
-  if (!['pending', 'in_process'].includes(status)) return payment;
+function isPixPayment(payment) {
+  const method = String(payment?.payment_method_id || payment?.paymentMethodId || '').toLowerCase();
+  const type = String(payment?.payment_type_id || payment?.paymentTypeId || '').toLowerCase();
+  return method === 'pix' || type === 'bank_transfer' || hasPixPayload(payment);
+}
 
-  try {
-    const fresh = await fetchPaymentDetails(payment.id);
-    return fresh || payment;
-  } catch (error) {
-    console.error('[Checkout Brick] Falha ao buscar QR Pix', error.message);
-    return payment;
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function ensurePixPayload(payment) {
+  if (!isPixPayment(payment)) return payment;
+  let current = payment;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    if (hasPixPayload(current)) return current;
+    if (!current?.id) break;
+    const status = String(current.status || '').toLowerCase();
+    if (status && !['pending', 'in_process'].includes(status)) break;
+    if (attempt > 0) await wait(400);
+    try {
+      const fresh = await fetchPaymentDetails(current.id);
+      if (fresh) current = fresh;
+    } catch (error) {
+      console.error('[Checkout Brick] Falha ao buscar QR Pix', error.message);
+      break;
+    }
   }
+  return current;
 }
 
 function publicPaymentResult(order, payment) {
