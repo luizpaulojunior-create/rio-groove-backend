@@ -198,7 +198,11 @@ async function alignOrderWithCheckoutTotal(order, formData) {
   if (Number.isFinite(clientAmount) && subtotal > 0) {
     const client = roundMoney(clientAmount);
     const freight = roundMoney(client - subtotal);
-    if (freight >= -0.009 && freight <= 1000 && client + 0.05 >= amount) {
+    const declared = Number(formData?.shipping?.price);
+    const declaredFreight = roundMoney(declared);
+    const freightOk = freight >= -0.009 && freight <= 1000 && client > 0;
+    const declaredOk = !Number.isFinite(declared) || Math.abs(declaredFreight - freight) <= 0.05;
+    if (freightOk && declaredOk) {
       amount = client;
     }
   }
@@ -217,10 +221,40 @@ async function alignOrderWithCheckoutTotal(order, formData) {
   }
 }
 
+function previousPaymentMethod(order) {
+  const payload = order?.payment_payload;
+  if (!payload || typeof payload !== 'object') return '';
+  return String(payload.payment_method_id || payload.paymentMethodId || '').toLowerCase();
+}
+
+async function cancelReplacedPix(order, nextAmount) {
+  const paymentId = String(order?.mercado_pago_payment_id || '').trim();
+  if (!paymentId) return;
+  const status = String(order.mercado_pago_status || '').toLowerCase();
+  if (status && !['pending', 'in_process'].includes(status)) return;
+  const method = previousPaymentMethod(order);
+  if (method && method !== 'pix' && method !== 'bank_transfer') return;
+  const previousAmount = roundMoney(order.payment_payload?.transaction_amount);
+  if (previousAmount > 0 && Math.abs(previousAmount - nextAmount) <= 0.05) return;
+
+  try {
+    await paymentClient.cancel({ id: paymentId });
+  } catch (error) {
+    const message = readMercadoPagoError(error);
+    console.error('[Checkout Brick] Não cancelei o Pix anterior', message);
+    if (/approved|acreditado|já foi pago/i.test(message)) {
+      throw httpError('Este pedido já foi pago.', 409);
+    }
+  }
+}
+
 async function payCheckoutWithBrick({ orderId, formData, idempotencyKey }) {
   const order = await loadPayableOrder(orderId);
   await alignOrderWithCheckoutTotal(order, formData || {});
   const body = buildPaymentBody(order, formData || {});
+  if (body.payment_method_id === 'pix') {
+    await cancelReplacedPix(order, body.transaction_amount);
+  }
   const key = String(idempotencyKey || '').trim() || randomUUID();
 
   console.log('[Checkout Brick] Criando pagamento', {
