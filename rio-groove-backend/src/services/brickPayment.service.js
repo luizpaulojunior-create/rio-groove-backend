@@ -51,14 +51,28 @@ function roundMoney(value) {
   return Number(Number(value || 0).toFixed(2));
 }
 
+function readRawCheckout(order) {
+  const raw = order?.raw_checkout_payload;
+  return raw && typeof raw === 'object' ? raw : {};
+}
+
 function chargeAmount(order) {
   const stored = roundMoney(order.total_amount);
   const subtotal = roundMoney(order.subtotal_amount);
   const discount = roundMoney(order.discount_amount);
-  const shipping = roundMoney(order.shipping_amount);
+  const raw = readRawCheckout(order);
+  const freight = Math.max(
+    roundMoney(order.shipping_amount),
+    roundMoney(raw.shipping?.price),
+  );
+  const rawTotal = roundMoney(raw.total);
   const withoutShipping = [subtotal, roundMoney(subtotal - discount)];
-  const missingShipping = shipping > 0 && withoutShipping.some((value) => Math.abs(stored - value) < 0.05);
-  return missingShipping ? roundMoney(stored + shipping) : stored;
+  const missingShipping = freight > 0 && withoutShipping.some((value) => Math.abs(stored - value) < 0.05);
+  const withFreight = missingShipping ? roundMoney(stored + freight) : stored;
+  if (rawTotal > withFreight + 0.009 && rawTotal <= withFreight + freight + 0.05) {
+    return rawTotal;
+  }
+  return withFreight;
 }
 
 function buildPaymentBody(order, formData) {
@@ -178,6 +192,11 @@ async function loadPayableOrder(orderId) {
 
 async function payCheckoutWithBrick({ orderId, formData, idempotencyKey }) {
   const order = await loadPayableOrder(orderId);
+  const amount = chargeAmount(order);
+  if (Math.abs(amount - roundMoney(order.total_amount)) > 0.009) {
+    await updateOrderById(order.id, { total_amount: amount });
+    order.total_amount = amount;
+  }
   const body = buildPaymentBody(order, formData || {});
   const key = String(idempotencyKey || '').trim() || randomUUID();
 
