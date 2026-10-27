@@ -76,7 +76,7 @@ function chargeAmount(order) {
 }
 
 function buildPaymentBody(order, formData) {
-  const amount = chargeAmount(order);
+  const amount = roundMoney(order.total_amount);
   if (!Number.isFinite(amount) || amount <= 0) {
     throw httpError('Total do pedido inválido.', 400);
   }
@@ -190,13 +190,36 @@ async function loadPayableOrder(orderId) {
   return order;
 }
 
+async function alignOrderWithCheckoutTotal(order, formData) {
+  const subtotal = roundMoney(order.subtotal_amount);
+  const clientAmount = Number(formData?.transaction_amount);
+  let amount = chargeAmount(order);
+
+  if (Number.isFinite(clientAmount) && subtotal > 0) {
+    const client = roundMoney(clientAmount);
+    const freight = roundMoney(client - subtotal);
+    if (freight >= -0.009 && freight <= 1000 && client + 0.05 >= amount) {
+      amount = client;
+    }
+  }
+
+  const freight = roundMoney(Math.max(0, amount - subtotal));
+  const label = String(formData?.shipping?.label || '').trim().slice(0, 160);
+  const updates = {};
+  if (Math.abs(amount - roundMoney(order.total_amount)) > 0.009) updates.total_amount = amount;
+  if (subtotal > 0 && Math.abs(freight - roundMoney(order.shipping_amount)) > 0.009) {
+    updates.shipping_amount = freight;
+  }
+  if (label && label !== order.shipping_method) updates.shipping_method = label;
+  if (Object.keys(updates).length > 0) {
+    await updateOrderById(order.id, updates);
+    Object.assign(order, updates);
+  }
+}
+
 async function payCheckoutWithBrick({ orderId, formData, idempotencyKey }) {
   const order = await loadPayableOrder(orderId);
-  const amount = chargeAmount(order);
-  if (Math.abs(amount - roundMoney(order.total_amount)) > 0.009) {
-    await updateOrderById(order.id, { total_amount: amount });
-    order.total_amount = amount;
-  }
+  await alignOrderWithCheckoutTotal(order, formData || {});
   const body = buildPaymentBody(order, formData || {});
   const key = String(idempotencyKey || '').trim() || randomUUID();
 
